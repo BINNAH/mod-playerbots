@@ -115,6 +115,7 @@ void ChatCommandHandlerStrategy::InitTriggers(std::vector<TriggerNode*>& trigger
     triggers.push_back(new TriggerNode("roll", { NextAction("roll", relevance) }));
     triggers.push_back(new TriggerNode("focus heal", { NextAction("focus heal targets", relevance) }));
     triggers.push_back(new TriggerNode("emblems", { NextAction("emblems", relevance) }));
+    triggers.push_back(new TriggerNode("buyemblem", { NextAction("buyemblem", relevance) }));
 }
 
 ChatCommandHandlerStrategy::ChatCommandHandlerStrategy(PlayerbotAI* botAI) : PassTroughStrategy(botAI)
@@ -140,6 +141,7 @@ ChatCommandHandlerStrategy::ChatCommandHandlerStrategy(PlayerbotAI* botAI) : Pas
     supported.push_back("taxi");
     supported.push_back("repair");
     supported.push_back("emblems");
+    supported.push_back("buyemblem");
     supported.push_back("talents");
     supported.push_back("spells");
     supported.push_back("co");

@@ -42,6 +42,7 @@ public:
         creators["taxi"] = &ChatTriggerContext::taxi;
         creators["repair"] = &ChatTriggerContext::repair;
         creators["emblems"] = &ChatTriggerContext::emblems;
+        creators["buyemblem"] = &ChatTriggerContext::buyemblem;
         creators["u"] = &ChatTriggerContext::use;
         creators["use"] = &ChatTriggerContext::use;
         creators["c"] = &ChatTriggerContext::item_count;
@@ -237,6 +238,7 @@ private:
     static Trigger* use(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "use"); }
     static Trigger* repair(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "repair"); }
     static Trigger* emblems(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "emblems"); }
+    static Trigger* buyemblem(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "buyemblem"); }
     static Trigger* taxi(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "taxi"); }
     static Trigger* teleport(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "teleport"); }
     static Trigger* q(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "q"); }

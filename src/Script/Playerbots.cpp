@@ -33,6 +33,7 @@
 #include "PlayerbotCommandScript.h"
 #include "cmath"
 #include "BattleGroundTactics.h"
+#include "EmblemVendorCache.h"
 
 class PlayerbotsDatabaseScript : public DatabaseScript
 {
@@ -341,6 +342,7 @@ class PlayerbotsWorldScript : public WorldScript
 public:
     PlayerbotsWorldScript() : WorldScript("PlayerbotsWorldScript", {
         WORLDHOOK_ON_BEFORE_WORLD_INITIALIZED,
+        WORLDHOOK_ON_STARTUP,
         WORLDHOOK_ON_UPDATE
     }) {}
 
@@ -380,6 +382,13 @@ public:
     {
         PlayerbotWorldThreadProcessor::instance().Update(diff);
         sRandomPlayerbotMgr.UpdateAI(diff);  // World thread only
+    }
+
+    // Fires after DBCs and WorldDatabase are fully loaded — the right window to
+    // build the emblem-vendor catalog (it joins npc_vendor against ItemExtendedCost.dbc).
+    void OnStartup() override
+    {
+        sEmblemVendorCache.Load();
     }
 };
 
@@ -527,6 +536,10 @@ void AddPlayerbotsSecureLoginScripts();
 
 void AddSC_TempestKeepBotScripts();
 
+void AddSC_npc_botmaster();
+void AddSC_npc_trophy_keeper();
+void AddSC_npc_gimped_enchanter();
+
 void AddPlayerbotsScripts()
 {
     new PlayerbotsBattlefieldScript();
@@ -541,4 +554,7 @@ void AddPlayerbotsScripts()
     AddPlayerbotsCommandscripts();
     PlayerBotsGuildValidationScript();
     AddSC_TempestKeepBotScripts();
+    AddSC_npc_botmaster();
+    AddSC_npc_trophy_keeper();
+    AddSC_npc_gimped_enchanter();
 }

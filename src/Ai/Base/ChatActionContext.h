@@ -11,6 +11,7 @@
 #include "BankAction.h"
 #include "BuffAction.h"
 #include "BuyAction.h"
+#include "BuyEmblemAction.h"
 #include "CastCustomSpellAction.h"
 #include "ChangeChatAction.h"
 #include "ChangeStrategyAction.h"
@@ -128,6 +129,7 @@ public:
         creators["unequip"] = &ChatActionContext::unequip;
         creators["sell"] = &ChatActionContext::sell;
         creators["buy"] = &ChatActionContext::buy;
+        creators["buyemblem"] = &ChatActionContext::buyemblem;
         creators["reward"] = &ChatActionContext::reward;
         creators["trade"] = &ChatActionContext::trade;
         creators["talents"] = &ChatActionContext::talents;
@@ -272,6 +274,7 @@ private:
     static Action* unequip(PlayerbotAI* botAI) { return new UnequipAction(botAI); }
     static Action* sell(PlayerbotAI* botAI) { return new SellAction(botAI); }
     static Action* buy(PlayerbotAI* botAI) { return new BuyAction(botAI); }
+    static Action* buyemblem(PlayerbotAI* botAI) { return new BuyEmblemAction(botAI); }
     static Action* reward(PlayerbotAI* botAI) { return new RewardAction(botAI); }
     static Action* trade(PlayerbotAI* botAI) { return new TradeAction(botAI); }
 

@@ -59,19 +59,24 @@ private:
     static constexpr uint32 CloudRotationDelayMs = 15000;
 };
 
-//class HeiganMeleeTrigger : public Trigger
-//{
-//public:
-//    HeiganMeleeTrigger(PlayerbotAI* ai) : Trigger(ai, "heigan melee") {}
-//    virtual bool IsActive();
-//};
-//
-//class HeiganRangedTrigger : public Trigger
-//{
-//public:
-//    HeiganRangedTrigger(PlayerbotAI* ai) : Trigger(ai, "heigan ranged") {}
-//    bool IsActive() override;
-//};
+// Fires while Heigan is in the fast-dance phase (channeling Plague Cloud).
+// Used by every bot — they all collapse onto the master and let the player
+// pilot the dance for them.
+class HeiganFastDanceTrigger : public Trigger
+{
+public:
+    HeiganFastDanceTrigger(PlayerbotAI* ai) : Trigger(ai, "heigan fast dance") {}
+    bool IsActive() override;
+};
+
+// Fires while Heigan is engaged but NOT fast-dancing, for ranged bots only —
+// they take a fixed far-side stand position.
+class HeiganSlowDanceRangedTrigger : public Trigger
+{
+public:
+    HeiganSlowDanceRangedTrigger(PlayerbotAI* ai) : Trigger(ai, "heigan slow dance ranged") {}
+    bool IsActive() override;
+};
 
 class RazuviousTankTrigger : public Trigger
 {

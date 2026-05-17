@@ -137,6 +137,25 @@ bool ToCMountedAction::Execute(Event /*event*/)
     if (!target)
         return false;
 
+    // Enemies in the joust stack on the party, so the bot ends up at 0-3y from its target
+    // and never reaches Charge range. Back the mount off along the bot->target axis first.
+    float distToTarget = target->GetDistance2d(vehicleBase);
+    if (distToTarget < 8.0f && !vehicleBase->isMoving())
+    {
+        constexpr float kBackOffDist = 15.0f;
+        float angleFromTarget = target->GetAngle(vehicleBase);
+        float bx = target->GetPositionX() + kBackOffDist * std::cos(angleFromTarget);
+        float by = target->GetPositionY() + kBackOffDist * std::sin(angleFromTarget);
+        float bz = vehicleBase->GetPositionZ();
+        vehicleBase->UpdateAllowedPositionZ(bx, by, bz);
+
+        MotionMaster* mm = vehicleBase->GetMotionMaster();
+        mm->Clear(false);
+        mm->MovePoint(0, bx, by, bz);
+        vehicleBase->SendMovementFlagUpdate();
+        return true;
+    }
+
     if (target->GetDistance2d(bot) > 5.0f)
     {
         uint32 spellId = AI_VALUE2(uint32, "vehicle spell id", "Charge");

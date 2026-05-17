@@ -22,13 +22,18 @@ void RaidNaxxStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     ));
 
     // Heigan the Unclean
-    //triggers.push_back(new TriggerNode("heigan melee",
-    //    { NextAction("heigan dance melee", ACTION_RAID + 1) }
-    //));
+    // Fast-dance: every bot glues to the master so the player can do the
+    // dance for the whole raid. Highest priority — must beat normal combat
+    // movement.
+    triggers.push_back(new TriggerNode("heigan fast dance",
+        { NextAction("heigan follow master", ACTION_RAID + 3) }
+    ));
 
-    //triggers.push_back(new TriggerNode("heigan ranged",
-    //    { NextAction("heigan dance ranged", ACTION_RAID + 1) }
-    //));
+    // Slow-dance: ranged stand on the safe rear corner. Action returns false
+    // once in position so DPS rotation runs normally.
+    triggers.push_back(new TriggerNode("heigan slow dance ranged",
+        { NextAction("heigan ranged position", ACTION_RAID + 1) }
+    ));
 
     // Kel'Thuzad
     triggers.push_back(
