@@ -539,8 +539,6 @@ void AddSC_TempestKeepBotScripts();
 void AddSC_npc_botmaster();
 void AddSC_npc_trophy_keeper();
 void AddSC_npc_gimped_enchanter();
-void AddSC_npc_botcreator();
-void AddSC_npc_instance_manager();
 
 void AddPlayerbotsScripts()
 {
@@ -559,6 +557,4 @@ void AddPlayerbotsScripts()
     AddSC_npc_botmaster();
     AddSC_npc_trophy_keeper();
     AddSC_npc_gimped_enchanter();
-    AddSC_npc_botcreator();
-    AddSC_npc_instance_manager();
 }
