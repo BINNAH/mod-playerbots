@@ -27,6 +27,12 @@
 class EmblemVendorCache
 {
 public:
+    // Synthetic "currency" ids for non-item cost dimensions (honor & arena
+    // points). Chosen above any real ItemTemplate ID so they don't collide.
+    // The shop UI treats them like any other currency in the picker.
+    static constexpr uint32 SYNTH_CURRENCY_HONOR = 0xFFFFFFFE;
+    static constexpr uint32 SYNTH_CURRENCY_ARENA = 0xFFFFFFFD;
+
     struct Offering
     {
         uint32 vendorEntry;

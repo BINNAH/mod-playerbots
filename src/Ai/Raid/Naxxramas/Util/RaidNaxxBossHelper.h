@@ -20,6 +20,36 @@
 
 const uint32 NAXX_MAP_ID = 533;
 
+// True while Heigan is in his fast-dance phase. Used by triggers (to pick
+// the right strategy node) and by the dance action (to pick timing
+// constants). Three checks cover the full window: TeleportSelf aura at
+// phase entry, PlagueCloud aura during the ~45s channel, and an in-flight
+// cast of either to catch the 1-second gap between TeleportSelf and the
+// scheduled PlagueCloud.
+inline bool HeiganIsFastDancing(PlayerbotAI* botAI, Unit* heigan)
+{
+    if (!heigan)
+        return false;
+
+    if (botAI->HasAura(NaxxSpellIds::TeleportSelf, heigan))
+        return true;
+
+    if (botAI->HasAura(NaxxSpellIds::PlagueCloud, heigan))
+        return true;
+
+    if (heigan->HasUnitState(UNIT_STATE_CASTING))
+    {
+        Spell* spell = heigan->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+        if (!spell)
+            spell = heigan->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+        if (spell && NaxxSpellIds::MatchesAnySpellId(spell->GetSpellInfo(),
+                {NaxxSpellIds::PlagueCloud, NaxxSpellIds::TeleportSelf}))
+            return true;
+    }
+
+    return false;
+}
+
 template <class BossAiType>
 class GenericBossHelper : public AiObject
 {
@@ -369,6 +399,12 @@ public:
     const float posZ = 241.27f;
     const std::pair<float, float> attractPos[2] = {{2502.03f, -2910.90f},
                                                    {2484.61f, -2947.07f}};  // left (sir zeliek), right (lady blaumeux)
+    // Split-corner strategy: each tank parks his melee boss in his own back
+    // corner so the two 45y Mark-of-X auras don't overlap. Coordinates are
+    // the final waypoints from boss_four_horsemen.cpp:92-110.
+    const std::pair<float, float> tankPosThane = {2539.5f, -3018.6f};
+    const std::pair<float, float> tankPosBaron = {2587.3f, -2968.0f};
+    const std::pair<float, float> healerMidPos = {2563.4f, -2993.3f};
     FourHorsemenBossHelper(PlayerbotAI* botAI) : AiObject(botAI) {}
     bool UpdateBossAI()
     {

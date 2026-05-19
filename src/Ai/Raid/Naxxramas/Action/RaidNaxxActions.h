@@ -56,9 +56,21 @@ private:
     float distance;
 };
 
-// Heigan the Unclean: during the fast-dance ("safety dance") phase every bot
-// glues itself to the master so the player can do the dance for the whole raid.
-// During the slow-dance phase ranged take a fixed far-side stand position.
+// Heigan the Unclean.
+//
+// Slow-dance phase: tank + melee stand on the SE platform — eruption
+// GameObjects are only placed on the dance floor proper, so the platform
+// dodges the AOE entirely. Ranged dance to the safe section for the next
+// eruption.
+//
+// Fast-dance phase: everyone dances. Same algorithm as slow with tighter
+// constants (first eruption at +7s, every 4s).
+//
+// The schedule from boss_heigan.cpp is fully deterministic; each bot
+// predicts it from the start of the current phase. Section index follows
+// the boss script's `_currentSection` value (3 = nearest the spawn corner,
+// 0 = far SW strip). HeiganFollowMasterAction is kept as a manual-piloting
+// fallback but isn't wired into the strategy by default.
 class HeiganFollowMasterAction : public MovementAction
 {
 public:
@@ -66,19 +78,33 @@ public:
     bool Execute(Event event) override;
 };
 
-class HeiganRangedPositionAction : public MovementAction
+class HeiganPlatformAction : public MovementAction
 {
 public:
-    HeiganRangedPositionAction(PlayerbotAI* ai) : MovementAction(ai, "heigan ranged position") {}
+    HeiganPlatformAction(PlayerbotAI* ai) : MovementAction(ai, "heigan platform") {}
+    bool Execute(Event event) override;
+};
+
+class HeiganDanceAction : public MovementAction
+{
+public:
+    HeiganDanceAction(PlayerbotAI* ai)
+        : MovementAction(ai, "heigan dance"), phase_start_ms(0), last_seen_ms(0),
+          fast_phase(false) {}
     bool Execute(Event event) override;
 
 private:
-    // Stand spot on the safe rear corner of the room — same coords the old
-    // commented strategy used.
-    static constexpr float kRangedX = 2794.26f;
-    static constexpr float kRangedY = -3706.67f;
-    static constexpr float kRangedZ = 276.54f;
-    static constexpr float kInPositionTolerance = 4.0f;
+    uint8 ComputeSafeSection(uint32 now) const;
+
+    // Phase clock. phase_start_ms is snapped to "now" on each phase
+    // transition (fresh pull, observed slow↔fast flip, or long gap since
+    // last invocation), giving each phase its own +15s/+7s lead-in. The
+    // long-gap branch is load-bearing for tank/melee, whose slow-phase
+    // trigger doesn't route here — without it they resume fast phase 2
+    // with stale state from fast phase 1 and run to the wrong corner.
+    uint32 phase_start_ms;
+    uint32 last_seen_ms;
+    bool fast_phase;
 };
 
 class ThaddiusAttackNearestPetAction : public AttackAction

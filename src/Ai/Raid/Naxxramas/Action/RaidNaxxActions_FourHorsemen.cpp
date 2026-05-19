@@ -45,15 +45,37 @@ bool FourHorsemenAttackInOrderAction::Execute(Event /*event*/)
             break;
         }
     }
-    if (target)
+    if (!target)
+        return false;
+
+    // Split-corner strategy: tanks anchor each melee boss in his own corner
+    // (~60y apart, outside both 45y Mark auras); melee + ranged DPS converge
+    // on the main tank to focus Thane; non-attractor healers split between
+    // mid and the assist tank's corner.
+    if (target == thane || target == fourth)
     {
-        if (context->GetValue<Unit*>("current target")->Get() == target && botAI->GetState() == BOT_STATE_COMBAT)
-            return false;
+        const std::pair<float, float>* pos = &helper.tankPosThane;
+        if (botAI->IsAssistTank(bot))
+            pos = &helper.tankPosBaron;
+        else if (PlayerbotAI::IsHeal(bot))
+            // Healer index 0 attracts and never reaches here. Healer index 2
+            // (only present in 3-healer setups) dedicates to the assist tank;
+            // any other non-attractor healer (typically index 1) covers both
+            // tanks from the middle.
+            pos = botAI->IsAssistHealOfIndex(bot, 2) ? &helper.tankPosBaron
+                                                    : &helper.healerMidPos;
 
-        if (!bot->IsWithinLOSInMap(target))
-            return MoveNear(target, 22.0f, MovementPriority::MOVEMENT_COMBAT);
-
-        return Attack(target);
+        if (bot->GetDistance2d(pos->first, pos->second) > 4.0f &&
+            MoveTo(bot->GetMapId(), pos->first, pos->second, helper.posZ,
+                   false, false, false, false, MovementPriority::MOVEMENT_COMBAT))
+            return true;
     }
-    return false;
+
+    if (context->GetValue<Unit*>("current target")->Get() == target && botAI->GetState() == BOT_STATE_COMBAT)
+        return false;
+
+    if (!bot->IsWithinLOSInMap(target))
+        return MoveNear(target, 22.0f, MovementPriority::MOVEMENT_COMBAT);
+
+    return Attack(target);
 }

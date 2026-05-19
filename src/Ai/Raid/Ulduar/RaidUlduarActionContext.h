@@ -26,6 +26,8 @@ public:
         creators["razorscale harpoon action"] = &RaidUlduarActionContext::razorscale_harpoon_action;
         creators["razorscale fuse armor action"] = &RaidUlduarActionContext::razorscale_fuse_armor_action;
         creators["razorscale fire resistance action"] = &RaidUlduarActionContext::razorscale_fire_resistance_action;
+        creators["xt002 move away from group"] = &RaidUlduarActionContext::xt002_move_away_from_group;
+        creators["xt002 mark adds action"] = &RaidUlduarActionContext::xt002_mark_adds_action;
         creators["ignis fire resistance action"] = &RaidUlduarActionContext::ignis_fire_resistance_action;
         creators["iron assembly lightning tendrils action"] = &RaidUlduarActionContext::iron_assembly_lightning_tendrils_action;
         creators["iron assembly overload action"] = &RaidUlduarActionContext::iron_assembly_overload_action;
@@ -96,6 +98,8 @@ private:
     static Action* razorscale_harpoon_action(PlayerbotAI* ai) { return new RazorscaleHarpoonAction(ai); }
     static Action* razorscale_fuse_armor_action(PlayerbotAI* ai) { return new RazorscaleFuseArmorAction(ai); }
     static Action* razorscale_fire_resistance_action(PlayerbotAI* ai) { return new BossFireResistanceAction(ai, "razorscale"); }
+    static Action* xt002_move_away_from_group(PlayerbotAI* ai) { return new XT002MoveAwayFromGroupAction(ai); }
+    static Action* xt002_mark_adds_action(PlayerbotAI* ai) { return new XT002MarkAddsAction(ai); }
     static Action* ignis_fire_resistance_action(PlayerbotAI* ai) { return new BossFireResistanceAction(ai, "ignis the furnace master"); }
     static Action* iron_assembly_lightning_tendrils_action(PlayerbotAI* ai) { return new IronAssemblyLightningTendrilsAction(ai); }
     static Action* iron_assembly_overload_action(PlayerbotAI* ai) { return new IronAssemblyOverloadAction(ai); }

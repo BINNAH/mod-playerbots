@@ -4,6 +4,7 @@
 #include "Object.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
+#include "RaidBossHelpers.h"
 #include "RaidUlduarBossHelper.h"
 #include "RaidUlduarScripts.h"
 #include "ScriptedCreature.h"
@@ -2139,4 +2140,54 @@ bool YoggSaronPhase3PositioningTrigger::IsActive()
     }
 
     return false;
+}
+
+//
+// XT-002 Deconstructor
+//
+
+bool XT002BombOrLightOnMeTrigger::IsActive()
+{
+    return bot->HasAura(SPELL_GRAVITY_BOMB_10) || bot->HasAura(SPELL_GRAVITY_BOMB_25) ||
+           bot->HasAura(SPELL_SEARING_LIGHT_10) || bot->HasAura(SPELL_SEARING_LIGHT_25);
+}
+
+static bool XT002AnyAddAlive(PlayerbotAI* botAI)
+{
+    return GetFirstAliveUnitByEntry(botAI, NPC_XS013_SCRAPBOT) ||
+           GetFirstAliveUnitByEntry(botAI, NPC_XE321_BOOMBOT) ||
+           GetFirstAliveUnitByEntry(botAI, NPC_XM024_PUMMELLER);
+}
+
+bool XT002MarkAddsTrigger::IsActive()
+{
+    if (!botAI->IsTank(bot))
+        return false;
+
+    return XT002AnyAddAlive(botAI);
+}
+
+bool XT002AttackAddsTrigger::IsActive()
+{
+    if (!XT002AnyAddAlive(botAI))
+        return false;
+
+    Group* group = bot->GetGroup();
+    if (!group)
+        return false;
+
+    ObjectGuid skullGuid = group->GetTargetIcon(RtiTargetValue::skullIndex);
+    if (!skullGuid)
+        return false;
+
+    Unit* skull = botAI->GetUnit(skullGuid);
+    if (!skull || !skull->IsAlive())
+        return false;
+
+    uint32 entry = skull->GetEntry();
+    if (entry != NPC_XS013_SCRAPBOT && entry != NPC_XE321_BOOMBOT && entry != NPC_XM024_PUMMELLER)
+        return false;
+
+    Unit* currentTarget = botAI->GetUnit(bot->GetTarget());
+    return !currentTarget || currentTarget->GetGUID() != skullGuid;
 }

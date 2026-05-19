@@ -156,6 +156,19 @@ AiPlayerbot.AllowGuildBots = 1
 # Allow linking accounts for shared altbot control
 AiPlayerbot.AllowTrustedAccountBots = 1
 
+# ---- Bot Creator NPC (entry 600002) --------------------------------------
+# Caps on how many bots and alt accounts a single master can create through
+# the Bot Creator gossip NPC. New characters spill onto auto-created alt
+# accounts named <MASTERNAME>_ALTS_<N> once the master hits the 10-char realm
+# limit. The alt accounts are auto-linked back to master via
+# playerbots_account_links so the existing Botmaster NPC picks them up.
+AiPlayerbot.BotCreator.MaxBotsPerMaster   = 50
+AiPlayerbot.BotCreator.MaxAltAccounts     = 5
+# Password used for auto-created alt accounts. Max 16 chars. Keep it
+# something you'd be willing to use if you ever wanted to log into the
+# alt account directly to delete a stuck bot.
+AiPlayerbot.BotCreator.AltAccountPassword = tbots
+
 # Randombots will create guilds with nearby randombots
 # Note: currently, randombots will not invite more bots after a guild is created,
 # meaning randombot guilds will have only the 10 initial randombots needed to sign the charter

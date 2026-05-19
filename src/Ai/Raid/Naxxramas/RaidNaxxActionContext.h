@@ -21,7 +21,8 @@ public:
         creators["grobbulus move away"] = &RaidNaxxActionContext::grobbulus_move_away;
 
         creators["heigan follow master"] = &RaidNaxxActionContext::heigan_follow_master;
-        creators["heigan ranged position"] = &RaidNaxxActionContext::heigan_ranged_position;
+        creators["heigan platform"] = &RaidNaxxActionContext::heigan_platform;
+        creators["heigan dance"] = &RaidNaxxActionContext::heigan_dance;
         creators["thaddius attack nearest pet"] = &RaidNaxxActionContext::thaddius_attack_nearest_pet;
         // creators["thaddius melee to place"] = &RaidNaxxActionContext::thaddius_tank_to_place;
         // creators["thaddius ranged to place"] = &RaidNaxxActionContext::thaddius_ranged_to_place;
@@ -59,7 +60,8 @@ private:
     static Action* grobbulus_move_center(PlayerbotAI* ai) { return new GrobbulusMoveCenterAction(ai); }
     static Action* grobbulus_move_away(PlayerbotAI* ai) { return new GrobbulusMoveAwayAction(ai); }
     static Action* heigan_follow_master(PlayerbotAI* ai) { return new HeiganFollowMasterAction(ai); }
-    static Action* heigan_ranged_position(PlayerbotAI* ai) { return new HeiganRangedPositionAction(ai); }
+    static Action* heigan_platform(PlayerbotAI* ai) { return new HeiganPlatformAction(ai); }
+    static Action* heigan_dance(PlayerbotAI* ai) { return new HeiganDanceAction(ai); }
     static Action* thaddius_attack_nearest_pet(PlayerbotAI* ai) { return new ThaddiusAttackNearestPetAction(ai); }
     // static Action* thaddius_tank_to_place(PlayerbotAI* ai) { return new ThaddiusMeleeToPlaceAction(ai); }
     // static Action* thaddius_ranged_to_place(PlayerbotAI* ai) { return new ThaddiusRangedToPlaceAction(ai); }

@@ -25,6 +25,9 @@ public:
         creators["razorscale harpoon trigger"] = &RaidUlduarTriggerContext::razorscale_harpoon_trigger;
         creators["razorscale fuse armor trigger"] = &RaidUlduarTriggerContext::razorscale_fuse_armor_trigger;
         creators["razorscale fire resistance trigger"] = &RaidUlduarTriggerContext::razorscale_fire_resistance_trigger;
+        creators["xt002 bomb or light on me"] = &RaidUlduarTriggerContext::xt002_bomb_or_light_on_me;
+        creators["xt002 mark adds trigger"] = &RaidUlduarTriggerContext::xt002_mark_adds_trigger;
+        creators["xt002 attack adds trigger"] = &RaidUlduarTriggerContext::xt002_attack_adds_trigger;
         creators["ignis fire resistance trigger"] = &RaidUlduarTriggerContext::ignis_fire_resistance_trigger;
         creators["iron assembly lightning tendrils trigger"] = &RaidUlduarTriggerContext::iron_assembly_lightning_tendrils_trigger;
         creators["iron assembly overload trigger"] = &RaidUlduarTriggerContext::iron_assembly_overload_trigger;
@@ -97,6 +100,9 @@ private:
     static Trigger* razorscale_harpoon_trigger(PlayerbotAI* ai) { return new RazorscaleHarpoonAvailableTrigger(ai); }
     static Trigger* razorscale_fuse_armor_trigger(PlayerbotAI* ai) { return new RazorscaleFuseArmorTrigger(ai); }
     static Trigger* razorscale_fire_resistance_trigger(PlayerbotAI* ai) { return new BossFireResistanceTrigger(ai, "razorscale"); }
+    static Trigger* xt002_bomb_or_light_on_me(PlayerbotAI* ai) { return new XT002BombOrLightOnMeTrigger(ai); }
+    static Trigger* xt002_mark_adds_trigger(PlayerbotAI* ai) { return new XT002MarkAddsTrigger(ai); }
+    static Trigger* xt002_attack_adds_trigger(PlayerbotAI* ai) { return new XT002AttackAddsTrigger(ai); }
     static Trigger* ignis_fire_resistance_trigger(PlayerbotAI* ai) { return new BossFireResistanceTrigger(ai, "ignis the furnace master"); }
     static Trigger* iron_assembly_lightning_tendrils_trigger(PlayerbotAI* ai) { return new IronAssemblyLightningTendrilsTrigger(ai); }
     static Trigger* iron_assembly_overload_trigger(PlayerbotAI* ai) { return new IronAssemblyOverloadTrigger(ai); }

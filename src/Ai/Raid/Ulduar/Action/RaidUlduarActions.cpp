@@ -16,6 +16,7 @@
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 #include "Position.h"
+#include "RaidBossHelpers.h"
 #include "RaidUlduarBossHelper.h"
 #include "RaidUlduarScripts.h"
 #include "RtiValue.h"
@@ -3026,6 +3027,39 @@ bool YoggSaronPhase3PositioningAction::Execute(Event /*event*/)
                       ULDUAR_YOGG_SARON_PHASE_3_MELEE_SPOT.GetPositionZ(), false, false, false, true,
                       MovementPriority::MOVEMENT_FORCED, true, false);
     }
+
+    return false;
+}
+
+//
+// XT-002 Deconstructor
+//
+
+bool XT002MoveAwayFromGroupAction::Execute(Event /*event*/)
+{
+    // Gravity Bomb and Searing Light both pulse AoE around the targeted player.
+    // The targeted player has to break from the raid to avoid wiping the group.
+    constexpr float minDistance = 12.0f;
+    Unit* nearestPlayer = GetNearestPlayerInRadius(bot, minDistance);
+    if (!nearestPlayer)
+        return false;
+
+    bot->AttackStop();
+    bot->InterruptNonMeleeSpells(true);
+    return FleePosition(nearestPlayer->GetPosition(), minDistance);
+}
+
+bool XT002MarkAddsAction::Execute(Event /*event*/)
+{
+    // Scrapbots heal XT for huge amounts — kill priority.
+    // Boombots have a deadly death explosion — burn them at range.
+    // Pummelers are mini-tankable adds — lowest swap priority.
+    if (Unit* scrapbot = GetFirstAliveUnitByEntry(botAI, NPC_XS013_SCRAPBOT))
+        MarkTargetWithSkull(bot, scrapbot);
+    else if (Unit* boombot = GetFirstAliveUnitByEntry(botAI, NPC_XE321_BOOMBOT))
+        MarkTargetWithSkull(bot, boombot);
+    else if (Unit* pummeler = GetFirstAliveUnitByEntry(botAI, NPC_XM024_PUMMELLER))
+        MarkTargetWithSkull(bot, pummeler);
 
     return false;
 }

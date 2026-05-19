@@ -629,8 +629,20 @@ bool RandomItemMgr::ShouldEquipWeaponForSpec(uint8 playerclass, uint8 spec, Item
         }
         case CLASS_ROGUE:
         {
-            mh_weapons = {ITEM_SUBCLASS_WEAPON_DAGGER};
-            oh_weapons = {ITEM_SUBCLASS_WEAPON_DAGGER};
+            if (m_weightScales[playerclass][spec].info.name == "combat")
+            {
+                mh_weapons = {ITEM_SUBCLASS_WEAPON_DAGGER, ITEM_SUBCLASS_WEAPON_SWORD,
+                              ITEM_SUBCLASS_WEAPON_MACE,   ITEM_SUBCLASS_WEAPON_AXE,
+                              ITEM_SUBCLASS_WEAPON_FIST};
+                oh_weapons = {ITEM_SUBCLASS_WEAPON_DAGGER, ITEM_SUBCLASS_WEAPON_SWORD,
+                              ITEM_SUBCLASS_WEAPON_MACE,   ITEM_SUBCLASS_WEAPON_AXE,
+                              ITEM_SUBCLASS_WEAPON_FIST};
+            }
+            else
+            {
+                mh_weapons = {ITEM_SUBCLASS_WEAPON_DAGGER};
+                oh_weapons = {ITEM_SUBCLASS_WEAPON_DAGGER};
+            }
             r_weapons = {ITEM_SUBCLASS_WEAPON_BOW, ITEM_SUBCLASS_WEAPON_CROSSBOW, ITEM_SUBCLASS_WEAPON_GUN};
             break;
         }

@@ -500,4 +500,21 @@ public:
     bool Execute(Event event) override;
 };
 
+//
+// XT-002 Deconstructor
+//
+class XT002MoveAwayFromGroupAction : public MovementAction
+{
+public:
+    XT002MoveAwayFromGroupAction(PlayerbotAI* botAI) : MovementAction(botAI, "xt002 move away from group") {}
+    bool Execute(Event event) override;
+};
+
+class XT002MarkAddsAction : public Action
+{
+public:
+    XT002MarkAddsAction(PlayerbotAI* botAI) : Action(botAI, "xt002 mark adds action") {}
+    bool Execute(Event event) override;
+};
+
 #endif

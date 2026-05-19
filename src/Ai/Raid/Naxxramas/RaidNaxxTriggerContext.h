@@ -19,6 +19,7 @@ public:
         creators["mutating injection removed"] = &RaidNaxxTriggerContext::mutating_injection_removed;
         creators["grobbulus cloud"] = &RaidNaxxTriggerContext::grobbulus_cloud;
         creators["heigan fast dance"] = &RaidNaxxTriggerContext::heigan_fast_dance;
+        creators["heigan slow dance platform"] = &RaidNaxxTriggerContext::heigan_slow_dance_platform;
         creators["heigan slow dance ranged"] = &RaidNaxxTriggerContext::heigan_slow_dance_ranged;
 
         creators["thaddius phase pet"] = &RaidNaxxTriggerContext::thaddius_phase_pet;
@@ -56,6 +57,7 @@ private:
     static Trigger* mutating_injection_removed(PlayerbotAI* ai) { return new MutatingInjectionRemovedTrigger(ai); }
     static Trigger* grobbulus_cloud(PlayerbotAI* ai) { return new GrobbulusCloudTrigger(ai); }
     static Trigger* heigan_fast_dance(PlayerbotAI* ai) { return new HeiganFastDanceTrigger(ai); }
+    static Trigger* heigan_slow_dance_platform(PlayerbotAI* ai) { return new HeiganSlowDancePlatformTrigger(ai); }
     static Trigger* heigan_slow_dance_ranged(PlayerbotAI* ai) { return new HeiganSlowDanceRangedTrigger(ai); }
 
     static Trigger* thaddius_phase_pet(PlayerbotAI* ai) { return new ThaddiusPhasePetTrigger(ai); }

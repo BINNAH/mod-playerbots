@@ -74,6 +74,13 @@ void EmblemVendorCache::Load()
                 _byCurrency[ec->reqitem[i]].push_back(off);
         }
 
+        // Also index under synthetic ids for honor/arena so PvP gear shows up
+        // in the picker when the bot has > 0 of either.
+        if (ec->reqhonorpoints > 0)
+            _byCurrency[SYNTH_CURRENCY_HONOR].push_back(off);
+        if (ec->reqarenapoints > 0)
+            _byCurrency[SYNTH_CURRENCY_ARENA].push_back(off);
+
         ++added;
     } while (result->NextRow());
 

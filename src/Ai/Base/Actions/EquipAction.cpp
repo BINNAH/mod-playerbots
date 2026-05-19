@@ -153,10 +153,25 @@ void EquipAction::EquipItem(Item* item)
             calculator.SetItemSetBonus(false);
             calculator.SetOverflowPenalty(false);
 
-            // Calculate item scores once and store them
-            float newItemScore = calculator.CalculateItem(itemId);
-            float mainHandScore = mainHandItem ? calculator.CalculateItem(mainHandItem->GetTemplate()->ItemId) : 0.0f;
-            float offHandScore = offHandItem ? calculator.CalculateItem(offHandItem->GetTemplate()->ItemId) : 0.0f;
+            // Score every candidate against the slot it would occupy so that
+            // spec-preferred weapon bonuses (Combat rogue slow MH / fast OH,
+            // Fury slow 1H DW, Ret slow 2H, etc.) actually fire. Scoring with
+            // no slot makes ApplyPreferredSpecWeapons early-return 1.0×, and
+            // an equal-iLvl fast dagger beats a slow fist on raw stats alone.
+            float newItemMHScore = calculator.CalculateItem(itemId, 0, EQUIPMENT_SLOT_MAINHAND);
+            float newItemOHScore = calculator.CalculateItem(itemId, 0, EQUIPMENT_SLOT_OFFHAND);
+            float mainHandScore = mainHandItem
+                ? calculator.CalculateItem(mainHandItem->GetTemplate()->ItemId, 0, EQUIPMENT_SLOT_MAINHAND)
+                : 0.0f;
+            float offHandScore = offHandItem
+                ? calculator.CalculateItem(offHandItem->GetTemplate()->ItemId, 0, EQUIPMENT_SLOT_OFFHAND)
+                : 0.0f;
+            // For the "demote old MH to OH" check below: rescore the current MH
+            // as if it were in OH. A slow MH inherits a 3× boost it would not
+            // get in OH, so reusing mainHandScore would falsely favour the swap.
+            float oldMHasOHScore = mainHandItem
+                ? calculator.CalculateItem(mainHandItem->GetTemplate()->ItemId, 0, EQUIPMENT_SLOT_OFFHAND)
+                : 0.0f;
 
             // Determine where this weapon can go
             bool canGoMain = (invType == INVTYPE_WEAPON ||
@@ -191,7 +206,7 @@ void EquipAction::EquipItem(Item* item)
 
             // Priority 1: Replace main hand if the new weapon is strictly better
             // and if conditions allow (e.g. no conflicting 2H logic)
-            bool betterThanMH = (newItemScore > mainHandScore);
+            bool betterThanMH = (newItemMHScore > mainHandScore);
             // If a one-handed weapon is better, we can still use it instead of a two-handed weapon
             bool mhConditionOK = (invType != INVTYPE_2HWEAPON ||
                       (isTwoHander && !canTitanGrip) ||
@@ -210,7 +225,7 @@ void EquipAction::EquipItem(Item* item)
                 }
 
                 // Try moving old main hand weapon to offhand if beneficial
-                if (mainHandItem && mainHandCanGoOff && (!offHandItem || mainHandScore > offHandScore))
+                if (mainHandItem && mainHandCanGoOff && (!offHandItem || oldMHasOHScore > offHandScore))
                 {
                     const ItemTemplate* oldMHProto = mainHandItem->GetTemplate();
 
@@ -233,7 +248,7 @@ void EquipAction::EquipItem(Item* item)
             }
 
             // Priority 2: If not better than main hand, check if better than offhand
-            else if (canGoOff && newItemScore > offHandScore)
+            else if (canGoOff && newItemOHScore > offHandScore)
             {
                 // Equip in offhand
                 WorldPacket eqPacket(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
@@ -310,6 +325,26 @@ void EquipAction::EquipItem(Item* item)
                     dstSlot++;
                 }
             }
+        }
+
+        // SelectInventoryItemsToEquip scored each candidate against the bot's
+        // state at scan time. As items get equipped during iteration the
+        // "current" state shifts, so without a re-check here a later worse
+        // candidate silently overwrites a better one already equipped this
+        // batch. The dual-wield/TG and ring/trinket branches above do their
+        // own scoring; this guard covers single-slot items and weapons on
+        // non-dual-wield classes (e.g. DK without Threat of Thassarian).
+        if (Item* currentItem = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, dstSlot))
+        {
+            StatsWeightCalculator calc(bot);
+            calc.SetItemSetBonus(false);
+            calc.SetOverflowPenalty(false);
+
+            float newScore = calc.CalculateItem(itemId, item->GetItemRandomPropertyId(), dstSlot);
+            float curScore = calc.CalculateItem(currentItem->GetTemplate()->ItemId,
+                                                currentItem->GetItemRandomPropertyId(), dstSlot);
+            if (newScore <= curScore)
+                return;
         }
 
         // Equip the item in the chosen slot

@@ -49,6 +49,21 @@ void RaidUlduarStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         { NextAction("razorscale fire resistance action", ACTION_RAID) }));
 
     //
+    // XT-002 Deconstructor
+    //
+    triggers.push_back(new TriggerNode(
+        "xt002 bomb or light on me",
+        { NextAction("xt002 move away from group", ACTION_RAID + 2) }));
+
+    triggers.push_back(new TriggerNode(
+        "xt002 mark adds trigger",
+        { NextAction("xt002 mark adds action", ACTION_RAID + 1) }));
+
+    triggers.push_back(new TriggerNode(
+        "xt002 attack adds trigger",
+        { NextAction("attack rti target", ACTION_RAID) }));
+
+    //
     // Ignis
     //
     triggers.push_back(new TriggerNode(

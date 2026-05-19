@@ -75,4 +75,12 @@ void MaintenanceStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
             }
         )
     );
+    triggers.push_back(
+        new TriggerNode(
+            "seldom",
+            {
+                NextAction("equip upgrades packet action", 6.0f)
+            }
+        )
+    );
 }

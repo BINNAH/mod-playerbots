@@ -465,4 +465,28 @@ public:
     bool IsActive() override;
 };
 
+//
+// XT-002 Deconstructor
+//
+class XT002BombOrLightOnMeTrigger : public Trigger
+{
+public:
+    XT002BombOrLightOnMeTrigger(PlayerbotAI* ai) : Trigger(ai, "xt002 bomb or light on me") {}
+    bool IsActive() override;
+};
+
+class XT002MarkAddsTrigger : public Trigger
+{
+public:
+    XT002MarkAddsTrigger(PlayerbotAI* ai) : Trigger(ai, "xt002 mark adds trigger") {}
+    bool IsActive() override;
+};
+
+class XT002AttackAddsTrigger : public Trigger
+{
+public:
+    XT002AttackAddsTrigger(PlayerbotAI* ai) : Trigger(ai, "xt002 attack adds trigger") {}
+    bool IsActive() override;
+};
+
 #endif

@@ -69,8 +69,20 @@ public:
     bool IsActive() override;
 };
 
-// Fires while Heigan is engaged but NOT fast-dancing, for ranged bots only —
-// they take a fixed far-side stand position.
+// Slow phase, main tank only. The tank explicitly parks on the platform so
+// the boss settles there in melee. Melee DPS aren't pinned by this trigger
+// — they chase the boss normally and end up on the platform with the tank,
+// which avoids the ping-pong conflict between "stand at platform XY" and
+// "chase the boss's actual position".
+class HeiganSlowDancePlatformTrigger : public Trigger
+{
+public:
+    HeiganSlowDancePlatformTrigger(PlayerbotAI* ai) : Trigger(ai, "heigan slow dance platform") {}
+    bool IsActive() override;
+};
+
+// Slow phase, ranged bots only. They have to dance — no platform escape
+// because they need cast range on the boss without bunching into melee.
 class HeiganSlowDanceRangedTrigger : public Trigger
 {
 public:

@@ -76,33 +76,6 @@ bool GrobbulusCloudTrigger::IsActive()
     return true;
 }
 
-static bool HeiganIsFastDancing(PlayerbotAI* botAI, Unit* heigan)
-{
-    if (!heigan)
-        return false;
-
-    // Aura applied on the boss when he teleports up at fast-dance start.
-    if (botAI->HasAura(NaxxSpellIds::TeleportSelf, heigan))
-        return true;
-
-    // Plague Cloud channel is active for the whole ~45s fast-dance window —
-    // it's the most reliable phase indicator.
-    if (botAI->HasAura(NaxxSpellIds::PlagueCloud, heigan))
-        return true;
-
-    if (heigan->HasUnitState(UNIT_STATE_CASTING))
-    {
-        Spell* spell = heigan->GetCurrentSpell(CURRENT_GENERIC_SPELL);
-        if (!spell)
-            spell = heigan->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
-        if (spell && NaxxSpellIds::MatchesAnySpellId(spell->GetSpellInfo(),
-                {NaxxSpellIds::PlagueCloud, NaxxSpellIds::TeleportSelf}))
-            return true;
-    }
-
-    return false;
-}
-
 bool HeiganFastDanceTrigger::IsActive()
 {
     Unit* heigan = AI_VALUE2(Unit*, "find target", "heigan the unclean");
@@ -110,6 +83,18 @@ bool HeiganFastDanceTrigger::IsActive()
         return false;
 
     return HeiganIsFastDancing(botAI, heigan);
+}
+
+bool HeiganSlowDancePlatformTrigger::IsActive()
+{
+    Unit* heigan = AI_VALUE2(Unit*, "find target", "heigan the unclean");
+    if (!heigan)
+        return false;
+
+    if (!botAI->IsMainTank(bot))
+        return false;
+
+    return !HeiganIsFastDancing(botAI, heigan);
 }
 
 bool HeiganSlowDanceRangedTrigger::IsActive()

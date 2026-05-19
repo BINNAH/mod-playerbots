@@ -44,13 +44,11 @@ namespace
 
     bool ItemIsUsableByBot(Player* bot, ItemTemplate const* p)
     {
-        if (p->RequiredLevel > bot->GetLevel())
-            return false;
-        if (p->AllowableClass && !(p->AllowableClass & bot->getClassMask()))
-            return false;
-        if (p->AllowableRace && !(p->AllowableRace & bot->getRaceMask()))
-            return false;
-        return true;
+        // CanUseItem is the comprehensive check: class/race masks AND armor
+        // proficiency (no plate for rogues) AND weapon proficiency AND any
+        // required spells. Catches the cases where AllowableClass alone is too
+        // permissive (e.g. an "any class" cloth chest a rogue shouldn't grab).
+        return bot->CanUseItem(p) == EQUIP_ERR_OK;
     }
 }
 
