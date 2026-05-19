@@ -3049,17 +3049,17 @@ bool XT002MoveAwayFromGroupAction::Execute(Event /*event*/)
     return FleePosition(nearestPlayer->GetPosition(), minDistance);
 }
 
-bool XT002MarkAddsAction::Execute(Event /*event*/)
+bool XT002OffTankPickupPummelerAction::Execute(Event event)
 {
-    // Scrapbots heal XT for huge amounts — kill priority.
-    // Boombots have a deadly death explosion — burn them at range.
-    // Pummelers are mini-tankable adds — lowest swap priority.
-    if (Unit* scrapbot = GetFirstAliveUnitByEntry(botAI, NPC_XS013_SCRAPBOT))
-        MarkTargetWithSkull(bot, scrapbot);
-    else if (Unit* boombot = GetFirstAliveUnitByEntry(botAI, NPC_XE321_BOOMBOT))
-        MarkTargetWithSkull(bot, boombot);
-    else if (Unit* pummeler = GetFirstAliveUnitByEntry(botAI, NPC_XM024_PUMMELLER))
-        MarkTargetWithSkull(bot, pummeler);
+    Unit* pummeler = GetFirstAliveUnitByEntry(botAI, NPC_XM024_PUMMELLER);
+    if (!pummeler)
+        return false;
+
+    if (bot->GetVictim() != pummeler)
+        return Attack(pummeler);
+
+    if (pummeler->GetVictim() != bot)
+        return botAI->DoSpecificAction("taunt spell", event, true);
 
     return false;
 }

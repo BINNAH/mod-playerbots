@@ -475,17 +475,10 @@ public:
     bool IsActive() override;
 };
 
-class XT002MarkAddsTrigger : public Trigger
+class XT002OffTankPickupPummelerTrigger : public Trigger
 {
 public:
-    XT002MarkAddsTrigger(PlayerbotAI* ai) : Trigger(ai, "xt002 mark adds trigger") {}
-    bool IsActive() override;
-};
-
-class XT002AttackAddsTrigger : public Trigger
-{
-public:
-    XT002AttackAddsTrigger(PlayerbotAI* ai) : Trigger(ai, "xt002 attack adds trigger") {}
+    XT002OffTankPickupPummelerTrigger(PlayerbotAI* ai) : Trigger(ai, "xt002 offtank pickup pummeler") {}
     bool IsActive() override;
 };
 

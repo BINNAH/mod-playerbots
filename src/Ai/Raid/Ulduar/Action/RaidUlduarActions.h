@@ -510,10 +510,10 @@ public:
     bool Execute(Event event) override;
 };
 
-class XT002MarkAddsAction : public Action
+class XT002OffTankPickupPummelerAction : public AttackAction
 {
 public:
-    XT002MarkAddsAction(PlayerbotAI* botAI) : Action(botAI, "xt002 mark adds action") {}
+    XT002OffTankPickupPummelerAction(PlayerbotAI* botAI) : AttackAction(botAI, "xt002 offtank pickup pummeler") {}
     bool Execute(Event event) override;
 };
 
