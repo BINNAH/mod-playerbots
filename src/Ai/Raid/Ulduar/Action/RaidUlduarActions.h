@@ -517,4 +517,11 @@ public:
     bool Execute(Event event) override;
 };
 
+class XT002MainTankAttackBossAction : public AttackAction
+{
+public:
+    XT002MainTankAttackBossAction(PlayerbotAI* botAI) : AttackAction(botAI, "xt002 main tank attack boss") {}
+    bool Execute(Event event) override;
+};
+
 #endif

@@ -482,4 +482,11 @@ public:
     bool IsActive() override;
 };
 
+class XT002MainTankAttackBossTrigger : public Trigger
+{
+public:
+    XT002MainTankAttackBossTrigger(PlayerbotAI* ai) : Trigger(ai, "xt002 main tank attack boss") {}
+    bool IsActive() override;
+};
+
 #endif

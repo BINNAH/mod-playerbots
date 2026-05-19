@@ -59,6 +59,10 @@ void RaidUlduarStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         "xt002 offtank pickup pummeler",
         { NextAction("xt002 offtank pickup pummeler", ACTION_RAID + 1) }));
 
+    triggers.push_back(new TriggerNode(
+        "xt002 main tank attack boss",
+        { NextAction("xt002 main tank attack boss", ACTION_RAID + 1) }));
+
     //
     // Ignis
     //

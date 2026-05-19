@@ -3063,3 +3063,18 @@ bool XT002OffTankPickupPummelerAction::Execute(Event event)
 
     return false;
 }
+
+bool XT002MainTankAttackBossAction::Execute(Event event)
+{
+    Unit* boss = AI_VALUE2(Unit*, "find target", "xt-002 deconstructor");
+    if (!boss)
+        return false;
+
+    if (bot->GetVictim() != boss)
+        return Attack(boss);
+
+    if (boss->GetVictim() != bot)
+        return botAI->DoSpecificAction("taunt spell", event, true);
+
+    return false;
+}

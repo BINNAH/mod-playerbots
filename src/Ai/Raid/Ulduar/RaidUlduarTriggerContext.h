@@ -27,6 +27,7 @@ public:
         creators["razorscale fire resistance trigger"] = &RaidUlduarTriggerContext::razorscale_fire_resistance_trigger;
         creators["xt002 bomb or light on me"] = &RaidUlduarTriggerContext::xt002_bomb_or_light_on_me;
         creators["xt002 offtank pickup pummeler"] = &RaidUlduarTriggerContext::xt002_offtank_pickup_pummeler;
+        creators["xt002 main tank attack boss"] = &RaidUlduarTriggerContext::xt002_main_tank_attack_boss;
         creators["ignis fire resistance trigger"] = &RaidUlduarTriggerContext::ignis_fire_resistance_trigger;
         creators["iron assembly lightning tendrils trigger"] = &RaidUlduarTriggerContext::iron_assembly_lightning_tendrils_trigger;
         creators["iron assembly overload trigger"] = &RaidUlduarTriggerContext::iron_assembly_overload_trigger;
@@ -101,6 +102,7 @@ private:
     static Trigger* razorscale_fire_resistance_trigger(PlayerbotAI* ai) { return new BossFireResistanceTrigger(ai, "razorscale"); }
     static Trigger* xt002_bomb_or_light_on_me(PlayerbotAI* ai) { return new XT002BombOrLightOnMeTrigger(ai); }
     static Trigger* xt002_offtank_pickup_pummeler(PlayerbotAI* ai) { return new XT002OffTankPickupPummelerTrigger(ai); }
+    static Trigger* xt002_main_tank_attack_boss(PlayerbotAI* ai) { return new XT002MainTankAttackBossTrigger(ai); }
     static Trigger* ignis_fire_resistance_trigger(PlayerbotAI* ai) { return new BossFireResistanceTrigger(ai, "ignis the furnace master"); }
     static Trigger* iron_assembly_lightning_tendrils_trigger(PlayerbotAI* ai) { return new IronAssemblyLightningTendrilsTrigger(ai); }
     static Trigger* iron_assembly_overload_trigger(PlayerbotAI* ai) { return new IronAssemblyOverloadTrigger(ai); }

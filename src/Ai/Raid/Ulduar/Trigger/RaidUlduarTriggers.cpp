@@ -2159,3 +2159,12 @@ bool XT002OffTankPickupPummelerTrigger::IsActive()
 
     return GetFirstAliveUnitByEntry(botAI, NPC_XM024_PUMMELLER) != nullptr;
 }
+
+bool XT002MainTankAttackBossTrigger::IsActive()
+{
+    // find target returns null while XT is in the heart-exposed phase
+    // (boss is flagged non-attackable), so the MT is free to do other things
+    // during that window — and snaps back to the boss when he re-emerges.
+    return PlayerbotAI::IsMainTank(bot) &&
+           AI_VALUE2(Unit*, "find target", "xt-002 deconstructor");
+}
