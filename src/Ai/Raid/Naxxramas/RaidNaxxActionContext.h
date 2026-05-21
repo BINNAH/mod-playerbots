@@ -7,6 +7,7 @@
 #define _PLAYERBOT_RAIDNAXXACTIONCONTEXT_H
 
 #include "Action.h"
+#include "BossAuraActions.h"
 #include "NamedObjectContext.h"
 #include "RaidNaxxActions.h"
 
@@ -34,15 +35,23 @@ public:
 
         creators["four horsemen attract alternatively"] = &RaidNaxxActionContext::four_horsemen_attract_alternatively;
         creators["four horsemen attack in order"] = &RaidNaxxActionContext::four_horsemen_attack_in_order;
+        creators["four horsemen avoid void zone"] = &RaidNaxxActionContext::four_horsemen_avoid_void_zone;
+        creators["four horsemen healer bleed off mark"] = &RaidNaxxActionContext::four_horsemen_healer_bleed_off_mark;
 
         creators["sapphiron ground position"] = &RaidNaxxActionContext::sapphiron_ground_position;
         creators["sapphiron flight position"] = &RaidNaxxActionContext::sapphiron_flight_position;
+        creators["sapphiron frost resistance action"] = &RaidNaxxActionContext::sapphiron_frost_resistance_action;
 
         creators["kel'thuzad choose target"] = &RaidNaxxActionContext::kelthuzad_choose_target;
         creators["kel'thuzad position"] = &RaidNaxxActionContext::kelthuzad_position;
+        creators["kel'thuzad control pet"] = &RaidNaxxActionContext::kelthuzad_control_pet;
 
         creators["anub'rekhan choose target"] = &RaidNaxxActionContext::anubrekhan_choose_target;
         creators["anub'rekhan position"] = &RaidNaxxActionContext::anubrekhan_position;
+
+        creators["maexxna attack web wrap"] = &RaidNaxxActionContext::maexxna_attack_web_wrap;
+        creators["hand of sacrifice on main tank"] = &RaidNaxxActionContext::hand_of_sacrifice_on_main_tank;
+        creators["guardian spirit on main tank"] = &RaidNaxxActionContext::guardian_spirit_on_main_tank;
 
         creators["gluth choose target"] = &RaidNaxxActionContext::gluth_choose_target;
         creators["gluth position"] = &RaidNaxxActionContext::gluth_position;
@@ -52,6 +61,8 @@ public:
 
         creators["loatheb position"] = &RaidNaxxActionContext::loatheb_position;
         creators["loatheb choose target"] = &RaidNaxxActionContext::loatheb_choose_target;
+
+        creators["noth tank adds"] = &RaidNaxxActionContext::noth_tank_adds;
     }
 
 private:
@@ -74,21 +85,35 @@ private:
     }
     static Action* four_horsemen_attract_alternatively(PlayerbotAI* ai) { return new FourHorsemenAttractAlternativelyAction(ai); }
     static Action* four_horsemen_attack_in_order(PlayerbotAI* ai) { return new FourHorsemenAttackInOrderAction(ai); }
+    static Action* four_horsemen_avoid_void_zone(PlayerbotAI* ai) { return new FourHorsemenAvoidVoidZoneAction(ai); }
+    static Action* four_horsemen_healer_bleed_off_mark(PlayerbotAI* ai) { return new FourHorsemenHealerBleedOffMarkAction(ai); }
     // static Action* sapphiron_ground_main_tank_position(PlayerbotAI* ai) { return new
     // SapphironGroundMainTankPositionAction(ai); }
     static Action* sapphiron_ground_position(PlayerbotAI* ai) { return new SapphironGroundPositionAction(ai); }
     static Action* sapphiron_flight_position(PlayerbotAI* ai) { return new SapphironFlightPositionAction(ai); }
+    static Action* sapphiron_frost_resistance_action(PlayerbotAI* ai) { return new BossFrostResistanceAction(ai, "sapphiron"); }
     // static Action* sapphiron_avoid_chill(PlayerbotAI* ai) { return new SapphironAvoidChillAction(ai); }
     static Action* kelthuzad_choose_target(PlayerbotAI* ai) { return new KelthuzadChooseTargetAction(ai); }
     static Action* kelthuzad_position(PlayerbotAI* ai) { return new KelthuzadPositionAction(ai); }
+    static Action* kelthuzad_control_pet(PlayerbotAI* ai) { return new KelthuzadControlPetAction(ai); }
     static Action* anubrekhan_choose_target(PlayerbotAI* ai) { return new AnubrekhanChooseTargetAction(ai); }
     static Action* anubrekhan_position(PlayerbotAI* ai) { return new AnubrekhanPositionAction(ai); }
+    static Action* maexxna_attack_web_wrap(PlayerbotAI* ai) { return new MaexxnaAttackWebWrapAction(ai); }
+    static Action* hand_of_sacrifice_on_main_tank(PlayerbotAI* ai)
+    {
+        return new MaexxnaHandOfSacrificeOnMainTankAction(ai);
+    }
+    static Action* guardian_spirit_on_main_tank(PlayerbotAI* ai)
+    {
+        return new MaexxnaGuardianSpiritOnMainTankAction(ai);
+    }
     static Action* gluth_choose_target(PlayerbotAI* ai) { return new GluthChooseTargetAction(ai); }
     static Action* gluth_position(PlayerbotAI* ai) { return new GluthPositionAction(ai); }
     static Action* gluth_slowdown(PlayerbotAI* ai) { return new GluthSlowdownAction(ai); }
     //static Action* patchwerk_ranged_position(PlayerbotAI* ai) { return new PatchwerkRangedPositionAction(ai); }
     static Action* loatheb_position(PlayerbotAI* ai) { return new LoathebPositionAction(ai); }
     static Action* loatheb_choose_target(PlayerbotAI* ai) { return new LoathebChooseTargetAction(ai); }
+    static Action* noth_tank_adds(PlayerbotAI* ai) { return new NothAddTankAction(ai); }
 };
 
 #endif

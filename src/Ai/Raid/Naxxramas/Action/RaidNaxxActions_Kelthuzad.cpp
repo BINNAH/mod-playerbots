@@ -1,7 +1,91 @@
 #include "RaidNaxxActions.h"
 
+#include "CharmInfo.h"
+#include "CreatureAI.h"
+#include "Pet.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
+
+namespace
+{
+    void CollectBotPets(Player* bot, std::vector<Creature*>& out)
+    {
+        if (Pet* primary = bot->GetPet())
+            out.push_back(primary);
+
+        for (Unit* u : bot->m_Controlled)
+        {
+            Creature* c = u ? u->ToCreature() : nullptr;
+            if (!c || c == bot->GetPet() || c->IsTotem())
+                continue;
+            out.push_back(c);
+        }
+    }
+}
+
+bool KelthuzadControlPetAction::Execute(Event /*event*/)
+{
+    if (!helper.UpdateBossAI())
+        return false;
+
+    std::vector<Creature*> pets;
+    CollectBotPets(bot, pets);
+    if (pets.empty())
+        return false;
+
+    ReactStates desired = helper.IsPhaseOne() ? REACT_PASSIVE : REACT_AGGRESSIVE;
+
+    for (Creature* pet : pets)
+    {
+        if (pet->GetReactState() != desired)
+        {
+            if (desired == REACT_PASSIVE && pet->GetVictim())
+                pet->AttackStop();
+            pet->SetReactState(desired);
+            if (CharmInfo* ci = pet->GetCharmInfo())
+                ci->SetPlayerReactState(desired);
+        }
+    }
+
+    // P1: the bot picks a center-pack target via KelthuzadChooseTargetAction;
+    // forward that to the pet so it stays useful while parked on passive.
+    if (desired == REACT_PASSIVE)
+    {
+        Unit* target = AI_VALUE(Unit*, "current target");
+        if (target && target->IsAlive() && bot->IsValidAttackTarget(target))
+        {
+            for (Creature* pet : pets)
+            {
+                CharmInfo* ci = pet->GetCharmInfo();
+                if (!ci)
+                    continue;
+                if (pet->GetVictim() == target && ci->IsCommandAttack())
+                    continue;
+
+                if (pet->GetVictim())
+                    pet->AttackStop();
+
+                ci->SetIsCommandAttack(true);
+                ci->SetIsAtStay(false);
+                ci->SetIsFollowing(false);
+                ci->SetIsCommandFollow(false);
+                ci->SetIsReturning(false);
+                pet->ClearUnitState(UNIT_STATE_FOLLOW);
+
+                if (pet->IsAIEnabled)
+                    pet->AI()->AttackStart(target);
+                else
+                    pet->Attack(target, true);
+            }
+        }
+    }
+
+    // Return false so the engine chains to "kel'thuzad position" and
+    // "kel'thuzad choose target" on the same tick — a true return would
+    // consume the tick (Engine.cpp:218) and the bot would never move or
+    // pick a victim.
+    return false;
+}
 
 bool KelthuzadChooseTargetAction::Execute(Event /*event*/)
 {

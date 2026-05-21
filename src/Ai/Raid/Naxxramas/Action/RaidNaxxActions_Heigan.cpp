@@ -30,16 +30,44 @@ namespace
 
     constexpr float kInPositionTolerance = 5.0f;
 
-    // Platform stand spot — confirmed in-game by walking the player there
-    // and reading the position. Geometrically section 1 by
-    // GetEruptionSection, but the eruption GOs are only on the dance floor
-    // proper so the platform stays clean during slow phase. Tank pulls
-    // Heigan into melee from his spawn ~14y away; melee DPS stack here on
-    // the tank.
-    constexpr float kPlatformX = 2789.82f;
-    constexpr float kPlatformY = -3695.14f;
+    // Platform stand spot, pulled ~8y back toward Heigan's home
+    // (HeiganPos = (2796, -3707)) from the old edge spot (2789.82, -3695.14).
+    // The eruption wedges fan out from HeiganPos into the x<2795 / y>-3706
+    // region; the old spot sat ~13y out in that fan, so melee stacked on the
+    // tank clipped the section tiles and Heigan's Spell Disruption aura
+    // reached the ranged behind him. Moving along the vector toward HeiganPos
+    // lands the stack ~5.4y from his home — clear of the dance-floor tiles,
+    // still melee range. The platform itself has no eruption GOs.
+    constexpr float kPlatformX = 2793.52f;
+    constexpr float kPlatformY = -3702.23f;
     constexpr float kPlatformZ = 274.88f;
     constexpr float kPlatformTolerance = 3.0f;
+
+    // Slow phase runs exactly 90s before Heigan teleports and the fast dance
+    // begins (boss_heigan.cpp StartFightPhase: the +90s task switches to
+    // PHASE_FAST_DANCE). Melee DPS abandon the platform this many ms early and
+    // join the slow dance, so they're already on the floor — not sprinting the
+    // ~34y off the platform — when the +7s/+4s fast cadence opens.
+    constexpr uint32 kSlowPhaseLengthMs = 90000;
+    constexpr uint32 kPreDanceLeadMs = 8000;
+
+    // Predicted safe section for the eruption in progress. Pure function of the
+    // phase clock so every caller agrees: the dance action (ranged through the
+    // slow phase, everyone through the fast phase) and the platform action's
+    // pre-dance lead-in both route through it.
+    uint8 ComputeSafeSectionAt(uint32 phase_start_ms, uint32 now, bool fast_phase)
+    {
+        uint32 first_delay = fast_phase ? kFastFirstEruptionDelayMs : kSlowFirstEruptionDelayMs;
+        uint32 interval = fast_phase ? kFastEruptionIntervalMs : kSlowEruptionIntervalMs;
+
+        uint32 elapsed = now - phase_start_ms;
+        uint32 k;
+        if (elapsed < first_delay)
+            k = 0;
+        else
+            k = (elapsed - first_delay) / interval + 1;
+        return kPattern[k % 6];
+    }
 }
 
 bool HeiganFollowMasterAction::Execute(Event /*event*/)
@@ -63,36 +91,67 @@ bool HeiganFollowMasterAction::Execute(Event /*event*/)
 
 bool HeiganPlatformAction::Execute(Event /*event*/)
 {
+    uint32 now = getMSTime();
+
+    // Slow-phase clock. This action only runs during the slow phase — the
+    // fast-dance trigger outranks it the instant Heigan teleports — so it sits
+    // dormant for the whole ~45s fast phase. Anchor on first sight (the pull)
+    // and re-anchor whenever we resume after that dormancy; the resume instant
+    // coincides with the real slow-phase start (fast ends -> StartFightPhase
+    // flips back to slow on the same tick HeiganIsFastDancing goes false). The
+    // 30s threshold sits above any single melee GCD/swing but well under the
+    // 45s fast phase, so only the genuine fast->slow gap re-anchors.
+    constexpr uint32 kStaleStateGapMs = 30000;
+    bool fresh = (slow_phase_start_ms == 0);
+    bool long_gap = (last_seen_ms != 0) && (now - last_seen_ms > kStaleStateGapMs);
+    if (fresh || long_gap)
+        slow_phase_start_ms = now;
+    last_seen_ms = now;
+
+    // Final seconds before the teleport: melee DPS bleed off the platform and
+    // pick up the slow dance early, dodging the remaining slow eruptions via the
+    // same safe-section math the ranged use. When the fast phase opens,
+    // HeiganFastDanceTrigger takes over mid-dance and the hand-off is seamless —
+    // no platform->floor sprint against the +7s/+4s cadence. The main tank stays
+    // parked so Heigan keeps tanked on the platform until he teleports himself.
+    if (!botAI->IsTank(bot) && (now - slow_phase_start_ms) >= kSlowPhaseLengthMs - kPreDanceLeadMs)
+    {
+        uint8 section = ComputeSafeSectionAt(slow_phase_start_ms, now, /*fast_phase=*/false);
+        float x = kSafeSpotsXY[section * 2];
+        float y = kSafeSpotsXY[section * 2 + 1];
+        if (!bot->IsWithinDist2d(x, y, kInPositionTolerance))
+        {
+            botAI->InterruptSpell();
+            MoveTo(bot->GetMapId(), x, y, kSafeSpotZ, false, false, false, false,
+                   MovementPriority::MOVEMENT_COMBAT);
+        }
+        // Hold the tick whether moving or parked on the wedge. Unlike the fast
+        // phase (boss teleported to center, passive, unreachable), Heigan is
+        // still tanked on the platform here, so handing control back would let
+        // melee DpsAssist drag the bot straight back into him off the safe spot.
+        return true;
+    }
+
     // Already on the spot — let the bot's tank/melee logic take over
     // (threat, white attacks, boss pathing into melee from his spawn).
     if (bot->IsWithinDist2d(kPlatformX, kPlatformY, kPlatformTolerance))
         return false;
 
-    return MoveTo(bot->GetMapId(), kPlatformX, kPlatformY, kPlatformZ, false, false, false,
-                  false, MovementPriority::MOVEMENT_COMBAT);
+    MoveTo(bot->GetMapId(), kPlatformX, kPlatformY, kPlatformZ, false, false, false,
+           false, MovementPriority::MOVEMENT_COMBAT);
+    // Hold the tick while en route (see HeiganDanceAction) so the move to the
+    // platform isn't cut short by an attack/assist action the moment MoveTo
+    // reports a duplicate.
+    return true;
 }
 
 uint8 HeiganDanceAction::ComputeSafeSection(uint32 now) const
 {
-    uint32 first_delay = fast_phase ? kFastFirstEruptionDelayMs : kSlowFirstEruptionDelayMs;
-    uint32 interval = fast_phase ? kFastEruptionIntervalMs : kSlowEruptionIntervalMs;
-
-    uint32 elapsed = now - phase_start_ms;
-    uint32 k;
-    if (elapsed < first_delay)
-    {
-        // Before the first eruption — pre-position at section 3, the safe
-        // section for that opening tick.
-        k = 0;
-    }
-    else
-    {
-        // Index of the NEXT eruption. The bot stays at safeSpot[pattern[k]]
-        // through that eruption, then k advances and it moves to the new
-        // safe spot during the lull.
-        k = (elapsed - first_delay) / interval + 1;
-    }
-    return kPattern[k % 6];
+    // Before the first eruption the shared helper returns pattern[0] = section
+    // 3, the safe opening tile. After it, the index walks to the NEXT eruption:
+    // the bot holds safeSpot[pattern[k]] through that eruption, then k advances
+    // and it slides to the new safe spot during the lull.
+    return ComputeSafeSectionAt(phase_start_ms, now, fast_phase);
 }
 
 bool HeiganDanceAction::Execute(Event /*event*/)
@@ -114,7 +173,17 @@ bool HeiganDanceAction::Execute(Event /*event*/)
     //    from fast phase 1 — phase_start_ms reads ~135s old, the section
     //    index lands at pattern[33 % 6] = 0, and they sprint to the SW
     //    corner instead of the NE one.
-    constexpr uint32 kStaleStateGapMs = 2000;
+    //
+    // The threshold MUST stay well above a single cast/channel. A casting bot
+    // parks its AI for the whole cast (PlayerbotAI sets nextCheckDelay =
+    // castTime + reactDelay), so this action isn't re-entered until the cast
+    // ends. At 2000ms, every ranged nuke (2-3.5s) looked like a "gap", reset
+    // the clock to phase start every cast, and pinned ranged DPS at the
+    // pre-position section forever (melee, with sub-2s GCDs, danced fine). The
+    // real dormancy we need to catch is the ~90s a melee spends on the platform
+    // across a slow phase, so anything between the longest channel (~10s) and
+    // that 90s works; 30s leaves margin on both sides.
+    constexpr uint32 kStaleStateGapMs = 30000;
     bool phase_changed = (phase_start_ms != 0) && (is_fast_now != fast_phase);
     bool fresh = (phase_start_ms == 0);
     bool long_gap = (last_seen_ms != 0) && (now - last_seen_ms > kStaleStateGapMs);
@@ -135,6 +204,14 @@ bool HeiganDanceAction::Execute(Event /*event*/)
         return false;
 
     botAI->InterruptSpell();
-    return MoveTo(bot->GetMapId(), x, y, kSafeSpotZ, false, false, false, false,
-                  MovementPriority::MOVEMENT_COMBAT);
+    MoveTo(bot->GetMapId(), x, y, kSafeSpotZ, false, false, false, false,
+           MovementPriority::MOVEMENT_COMBAT);
+    // Hold the tick while still en route. MoveTo returns false once the move
+    // is a duplicate (already heading to this spot), and returning that false
+    // would yield to lower-priority actions — dps-assist (relevance 50) and
+    // heal-reach — which then fire a cast that halts the bot mid-floor. The
+    // engine breaks on the first action that returns true, so returning true
+    // here keeps the dance owning movement until the bot actually reaches the
+    // safe wedge, at which point the in-position check above hands control back.
+    return true;
 }

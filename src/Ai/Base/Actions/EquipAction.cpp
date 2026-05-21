@@ -103,6 +103,9 @@ void EquipAction::EquipItem(Item* item)
         // Handle them early here to avoid issues.
         if (invType == INVTYPE_RANGED || invType == INVTYPE_THROWN || invType == INVTYPE_RANGEDRIGHT)
         {
+            Item* currentRanged = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED);
+            ItemTemplate const* replacedRangedProto = currentRanged ? currentRanged->GetTemplate() : nullptr;
+
             WorldPacket packet(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
             ObjectGuid itemguid = item->GetGUID();
             packet << itemguid << uint8(EQUIPMENT_SLOT_RANGED);
@@ -113,6 +116,8 @@ void EquipAction::EquipItem(Item* item)
 
             std::ostringstream out;
             out << "Equipping " << chat->FormatItem(itemProto) << " in ranged slot";
+            if (replacedRangedProto)
+                out << " (replacing " << chat->FormatItem(replacedRangedProto) << ")";
             botAI->TellMaster(out);
             return;
         }
@@ -214,6 +219,9 @@ void EquipAction::EquipItem(Item* item)
 
             if (canGoMain && betterThanMH && mhConditionOK)
             {
+                ItemTemplate const* replacedMHProto = mainHandItem ? mainHandItem->GetTemplate() : nullptr;
+                ItemTemplate const* replacedOHProto = offHandItem ? offHandItem->GetTemplate() : nullptr;
+
                 // Equip new weapon in main hand
                 {
                     WorldPacket eqPacket(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
@@ -238,11 +246,15 @@ void EquipAction::EquipItem(Item* item)
 
                     std::ostringstream moveMsg;
                     moveMsg << "Main hand upgrade found. Moving " << chat->FormatItem(oldMHProto) << " to offhand";
+                    if (replacedOHProto)
+                        moveMsg << " (replacing " << chat->FormatItem(replacedOHProto) << ")";
                     botAI->TellMaster(moveMsg);
                 }
 
                 std::ostringstream out;
                 out << "Equipping " << chat->FormatItem(itemProto) << " in main hand";
+                if (replacedMHProto)
+                    out << " (replacing " << chat->FormatItem(replacedMHProto) << ")";
                 botAI->TellMaster(out);
                 return;
             }
@@ -250,6 +262,8 @@ void EquipAction::EquipItem(Item* item)
             // Priority 2: If not better than main hand, check if better than offhand
             else if (canGoOff && newItemOHScore > offHandScore)
             {
+                ItemTemplate const* replacedOHProto = offHandItem ? offHandItem->GetTemplate() : nullptr;
+
                 // Equip in offhand
                 WorldPacket eqPacket(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
                 ObjectGuid newItemGuid = item->GetGUID();
@@ -260,6 +274,8 @@ void EquipAction::EquipItem(Item* item)
 
                 std::ostringstream out;
                 out << "Equipping " << chat->FormatItem(itemProto) << " in offhand";
+                if (replacedOHProto)
+                    out << " (replacing " << chat->FormatItem(replacedOHProto) << ")";
                 botAI->TellMaster(out);
                 return;
             }
@@ -334,6 +350,7 @@ void EquipAction::EquipItem(Item* item)
         // batch. The dual-wield/TG and ring/trinket branches above do their
         // own scoring; this guard covers single-slot items and weapons on
         // non-dual-wield classes (e.g. DK without Threat of Thassarian).
+        ItemTemplate const* replacedSlotProto = nullptr;
         if (Item* currentItem = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, dstSlot))
         {
             StatsWeightCalculator calc(bot);
@@ -345,6 +362,8 @@ void EquipAction::EquipItem(Item* item)
                                                 currentItem->GetItemRandomPropertyId(), dstSlot);
             if (newScore <= curScore)
                 return;
+
+            replacedSlotProto = currentItem->GetTemplate();
         }
 
         // Equip the item in the chosen slot
@@ -356,6 +375,13 @@ void EquipAction::EquipItem(Item* item)
             nicePacket.Read();
             bot->GetSession()->HandleAutoEquipItemSlotOpcode(nicePacket);
         }
+
+        std::ostringstream out;
+        out << "Equipping " << chat->FormatItem(itemProto);
+        if (replacedSlotProto)
+            out << " (replacing " << chat->FormatItem(replacedSlotProto) << ")";
+        botAI->TellMaster(out);
+        return;
     }
 
     std::ostringstream out;

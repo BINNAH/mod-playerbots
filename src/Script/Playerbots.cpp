@@ -539,6 +539,7 @@ void AddSC_TempestKeepBotScripts();
 void AddSC_npc_botmaster();
 void AddSC_npc_trophy_keeper();
 void AddSC_npc_gimped_enchanter();
+void AddRaidJsonStrategyCommandScripts();
 
 void AddPlayerbotsScripts()
 {
@@ -557,4 +558,5 @@ void AddPlayerbotsScripts()
     AddSC_npc_botmaster();
     AddSC_npc_trophy_keeper();
     AddSC_npc_gimped_enchanter();
+    AddRaidJsonStrategyCommandScripts();
 }

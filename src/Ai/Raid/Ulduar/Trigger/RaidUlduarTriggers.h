@@ -151,6 +151,13 @@ public:
     bool IsActive() override;
 };
 
+class KologarnSpreadPositioningTrigger : public Trigger
+{
+public:
+    KologarnSpreadPositioningTrigger(PlayerbotAI* ai) : Trigger(ai, "kologarn spread positioning trigger") {}
+    bool IsActive() override;
+};
+
 //
 // Auriaya
 //

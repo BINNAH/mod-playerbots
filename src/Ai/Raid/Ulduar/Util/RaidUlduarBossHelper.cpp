@@ -8,6 +8,14 @@
 #include "Playerbots.h"
 #include "World.h"
 
+const Position ULDUAR_KOLOGARN_SPREAD_POSITIONS[ULDUAR_KOLOGARN_SPREAD_POSITION_COUNT] = {
+    Position(1770.0f,  12.0f, 449.0f, 0.0f),
+    Position(1770.0f,   4.0f, 449.0f, 0.0f),
+    Position(1770.0f,  -4.0f, 449.0f, 0.0f),
+    Position(1770.0f, -12.0f, 449.0f, 0.0f),
+    Position(1770.0f, -20.0f, 449.0f, 0.0f),
+    Position(1770.0f, -28.0f, 449.0f, 0.0f),
+};
 const Position ULDUAR_THORIM_NEAR_ARENA_CENTER = Position(2134.9854f, -263.11853f, 419.8465f);
 const Position ULDUAR_THORIM_NEAR_ENTRANCE_POSITION = Position(2172.4355f, -258.27957f, 418.47162f);
 const Position ULDUAR_THORIM_GAUNTLET_LEFT_SIDE_6_YARDS_1 = Position(2237.6187f, -265.08844f, 412.17548f);

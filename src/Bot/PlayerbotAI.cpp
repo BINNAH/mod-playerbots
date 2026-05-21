@@ -1587,7 +1587,7 @@ void PlayerbotAI::ApplyInstanceStrategies(uint32 mapId, bool tellMaster)
     static const std::vector<std::string> allInstanceStrategies =
     {
         "aq20", "bwl", "karazhan", "gruulslair", "icc", "magtheridon", "moltencore",
-        "naxx", "onyxia", "ssc", "tbc-ac", "tempestkeep", "ulduar", "voa", "wotlk-an", "wotlk-cos",
+        "naxx", "onyxia", "ssc", "tbc-ac", "tempestkeep", "toc", "ulduar", "voa", "wotlk-an", "wotlk-cos",
         "wotlk-dtk", "wotlk-eoe", "wotlk-fos", "wotlk-gd", "wotlk-hol", "wotlk-hor",
         "wotlk-hos", "wotlk-nex", "wotlk-occ", "wotlk-ok", "wotlk-os", "wotlk-pos",
         "wotlk-toc", "wotlk-uk", "wotlk-up", "wotlk-vh", "zulaman"
@@ -1691,6 +1691,9 @@ void PlayerbotAI::ApplyInstanceStrategies(uint32 mapId, bool tellMaster)
             break;
         case 632:
             strategyName = "wotlk-fos";  // The Forge of Souls
+            break;
+        case 649:
+            strategyName = "toc";  // Trial of the Crusader (raid)
             break;
         case 650:
             strategyName = "wotlk-toc";  // Trial of the Champion

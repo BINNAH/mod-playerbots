@@ -91,7 +91,11 @@ bool HeiganSlowDancePlatformTrigger::IsActive()
     if (!heigan)
         return false;
 
-    if (!botAI->IsMainTank(bot))
+    // Tank + melee park on the platform during slow phase; ranged are routed
+    // to the dance by HeiganSlowDanceRangedTrigger instead. Previously this
+    // only fired for the main tank, so melee DPS fell through to default melee
+    // chase logic and ended up below the platform.
+    if (botAI->IsRanged(bot))
         return false;
 
     return !HeiganIsFastDancing(botAI, heigan);
@@ -141,6 +145,38 @@ bool FourHorsemenExceptAttractorsTrigger::IsActive()
         return false;
 
     return !helper.IsAttracter(bot);
+}
+
+bool FourHorsemenVoidZoneTrigger::IsActive()
+{
+    if (!helper.UpdateBossAI())
+        return false;
+
+    return helper.GetVoidZoneStandingIn(bot) != nullptr;
+}
+
+bool FourHorsemenHealerHighMarkTrigger::IsActive()
+{
+    if (!helper.UpdateBossAI())
+        return false;
+
+    if (!PlayerbotAI::IsHeal(bot))
+        return false;
+
+    // Attractors can't leave — Lady/Sir AoE-punish the raid if their victim
+    // ends up out of range.
+    if (helper.IsAttracter(bot))
+        return false;
+
+    return helper.ShouldHealerBleedOffMark(bot);
+}
+
+bool FourHorsemenOpeningDefensiveTrigger::IsActive()
+{
+    if (!helper.UpdateBossAI())
+        return false;
+
+    return helper.IsOpeningWindow();
 }
 
 bool SapphironGroundTrigger::IsActive()
@@ -213,6 +249,57 @@ bool MaexxnaTrigger::IsActive()
     return !botAI->IsTank(bot);
 }
 
+bool MaexxnaWebWrapTrigger::IsActive()
+{
+    if (!helper.UpdateBossAI())
+        return false;
+
+    if (!botAI->IsDps(bot))
+        return false;
+
+    return helper.GetClosestWebWrap() != nullptr;
+}
+
+// Shared gating for the pre-Web-Spray cooldown chain: the boss must be frenzied
+// (sub-30%), a Web Spray must be imminent, and the main tank must be alive to
+// protect. The first Web Spray fires at 40s, long before 30%, so this only ever
+// triggers for the deadly frenzied sprays.
+static bool MaexxnaPreWebSprayWindow(PlayerbotAI* botAI, MaexxnaBossHelper& helper)
+{
+    if (!helper.UpdateBossAI())
+        return false;
+
+    if (!helper.IsFrenzied() || !helper.WebSprayImminent())
+        return false;
+
+    Unit* mainTank = botAI->GetAiObjectContext()->GetValue<Unit*>("main tank")->Get();
+    return mainTank && mainTank->IsInWorld() && mainTank->IsAlive();
+}
+
+bool MaexxnaPreWebSprayHandOfSacrificeTrigger::IsActive()
+{
+    if (bot->getClass() != CLASS_PALADIN || !PlayerbotAI::IsHeal(bot))
+        return false;
+
+    return MaexxnaPreWebSprayWindow(botAI, helper);
+}
+
+bool MaexxnaPreWebSprayGuardianSpiritTrigger::IsActive()
+{
+    if (bot->getClass() != CLASS_PRIEST || !PlayerbotAI::IsHeal(bot))
+        return false;
+
+    return MaexxnaPreWebSprayWindow(botAI, helper);
+}
+
+bool MaexxnaPreWebSprayTankDefensiveTrigger::IsActive()
+{
+    if (!botAI->IsMainTank(bot))
+        return false;
+
+    return MaexxnaPreWebSprayWindow(botAI, helper);
+}
+
 //bool PatchwerkTankTrigger::IsActive()
 //{
 //    Unit* boss = AI_VALUE2(Unit*, "find target", "patchwerk");
@@ -244,6 +331,27 @@ bool MaexxnaTrigger::IsActive()
 //}
 
 bool LoathebTrigger::IsActive() { return helper.UpdateBossAI(); }
+
+bool NothAddTankTrigger::IsActive()
+{
+    if (!botAI->IsAssistTankOfIndex(bot, 0))
+        return false;
+
+    // Ground phase: Noth is on the threat list and reachable by name.
+    if (AI_VALUE2(Unit*, "find target", "noth the plaguebringer"))
+        return true;
+
+    // Balcony phase: Noth goes non-attackable and clears threat, so only the
+    // adds remain in combat. Detect the encounter through them instead.
+    GuidVector attackers = AI_VALUE(GuidVector, "attackers");
+    for (ObjectGuid const& guid : attackers)
+    {
+        Unit* unit = botAI->GetUnit(guid);
+        if (unit && unit->IsAlive() && NothAddEntries::IsNothAdd(unit->GetEntry()))
+            return true;
+    }
+    return false;
+}
 
 bool ThaddiusPhasePetTrigger::IsActive()
 {

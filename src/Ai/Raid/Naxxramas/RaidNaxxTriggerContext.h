@@ -6,6 +6,7 @@
 #ifndef _PLAYERBOT_RAIDNAXXTRIGGERCONTEXT_H
 #define _PLAYERBOT_RAIDNAXXTRIGGERCONTEXT_H
 
+#include "BossAuraTriggers.h"
 #include "NamedObjectContext.h"
 #include "RaidNaxxTriggers.h"
 
@@ -32,15 +33,26 @@ public:
 
         creators["four horsemen attractors"] = &RaidNaxxTriggerContext::four_horsemen_attractors;
         creators["four horsemen except attractors"] = &RaidNaxxTriggerContext::four_horsemen_except_attractors;
+        creators["four horsemen void zone"] = &RaidNaxxTriggerContext::four_horsemen_void_zone;
+        creators["four horsemen healer high mark"] = &RaidNaxxTriggerContext::four_horsemen_healer_high_mark;
+        creators["four horsemen opening defensive"] = &RaidNaxxTriggerContext::four_horsemen_opening_defensive;
 
         creators["sapphiron ground"] = &RaidNaxxTriggerContext::sapphiron_ground;
         creators["sapphiron flight"] = &RaidNaxxTriggerContext::sapphiron_flight;
+        creators["sapphiron frost resistance trigger"] = &RaidNaxxTriggerContext::sapphiron_frost_resistance_trigger;
 
         creators["kel'thuzad"] = &RaidNaxxTriggerContext::kelthuzad;
 
         creators["anub'rekhan"] = &RaidNaxxTriggerContext::anubrekhan;
         creators["faerlina"] = &RaidNaxxTriggerContext::faerlina;
         creators["maexxna"] = &RaidNaxxTriggerContext::maexxna;
+        creators["maexxna web wrap"] = &RaidNaxxTriggerContext::maexxna_web_wrap;
+        creators["maexxna pre web spray hand of sacrifice"] =
+            &RaidNaxxTriggerContext::maexxna_pre_web_spray_hand_of_sacrifice;
+        creators["maexxna pre web spray guardian spirit"] =
+            &RaidNaxxTriggerContext::maexxna_pre_web_spray_guardian_spirit;
+        creators["maexxna pre web spray tank defensive"] =
+            &RaidNaxxTriggerContext::maexxna_pre_web_spray_tank_defensive;
         //creators["patchwerk tank"] = &RaidNaxxTriggerContext::patchwerk_tank;
         //creators["patchwerk non-tank"] = &RaidNaxxTriggerContext::patchwerk_non_tank;
         //creators["patchwerk ranged"] = &RaidNaxxTriggerContext::patchwerk_ranged;
@@ -49,6 +61,8 @@ public:
         creators["gluth main tank mortal wound"] = &RaidNaxxTriggerContext::gluth_main_tank_mortal_wound;
 
         creators["loatheb"] = &RaidNaxxTriggerContext::loatheb;
+
+        creators["noth add tank"] = &RaidNaxxTriggerContext::noth_add_tank;
     }
 
 private:
@@ -69,19 +83,37 @@ private:
 
     static Trigger* four_horsemen_attractors(PlayerbotAI* ai) { return new FourHorsemenAttractorsTrigger(ai); }
     static Trigger* four_horsemen_except_attractors(PlayerbotAI* ai) { return new FourHorsemenExceptAttractorsTrigger(ai); }
+    static Trigger* four_horsemen_void_zone(PlayerbotAI* ai) { return new FourHorsemenVoidZoneTrigger(ai); }
+    static Trigger* four_horsemen_healer_high_mark(PlayerbotAI* ai) { return new FourHorsemenHealerHighMarkTrigger(ai); }
+    static Trigger* four_horsemen_opening_defensive(PlayerbotAI* ai) { return new FourHorsemenOpeningDefensiveTrigger(ai); }
 
     static Trigger* sapphiron_ground(PlayerbotAI* ai) { return new SapphironGroundTrigger(ai); }
     static Trigger* sapphiron_flight(PlayerbotAI* ai) { return new SapphironFlightTrigger(ai); }
+    static Trigger* sapphiron_frost_resistance_trigger(PlayerbotAI* ai) { return new BossFrostResistanceTrigger(ai, "sapphiron"); }
     static Trigger* kelthuzad(PlayerbotAI* ai) { return new KelthuzadTrigger(ai); }
     static Trigger* anubrekhan(PlayerbotAI* ai) { return new AnubrekhanTrigger(ai); }
     static Trigger* faerlina(PlayerbotAI* ai) { return new FaerlinaTrigger(ai); }
     static Trigger* maexxna(PlayerbotAI* ai) { return new MaexxnaTrigger(ai); }
+    static Trigger* maexxna_web_wrap(PlayerbotAI* ai) { return new MaexxnaWebWrapTrigger(ai); }
+    static Trigger* maexxna_pre_web_spray_hand_of_sacrifice(PlayerbotAI* ai)
+    {
+        return new MaexxnaPreWebSprayHandOfSacrificeTrigger(ai);
+    }
+    static Trigger* maexxna_pre_web_spray_guardian_spirit(PlayerbotAI* ai)
+    {
+        return new MaexxnaPreWebSprayGuardianSpiritTrigger(ai);
+    }
+    static Trigger* maexxna_pre_web_spray_tank_defensive(PlayerbotAI* ai)
+    {
+        return new MaexxnaPreWebSprayTankDefensiveTrigger(ai);
+    }
     //static Trigger* patchwerk_tank(PlayerbotAI* ai) { return new PatchwerkTankTrigger(ai); }
     //static Trigger* patchwerk_non_tank(PlayerbotAI* ai) { return new PatchwerkNonTankTrigger(ai); }
     //static Trigger* patchwerk_ranged(PlayerbotAI* ai) { return new PatchwerkRangedTrigger(ai); }
     static Trigger* gluth(PlayerbotAI* ai) { return new GluthTrigger(ai); }
     static Trigger* gluth_main_tank_mortal_wound(PlayerbotAI* ai) { return new GluthMainTankMortalWoundTrigger(ai); }
     static Trigger* loatheb(PlayerbotAI* ai) { return new LoathebTrigger(ai); }
+    static Trigger* noth_add_tank(PlayerbotAI* ai) { return new NothAddTankTrigger(ai); }
 };
 
 #endif

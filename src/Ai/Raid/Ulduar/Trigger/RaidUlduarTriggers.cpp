@@ -440,7 +440,7 @@ bool KologarnEyebeamTrigger::IsActive()
                 std::string triggerName = unit->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale());
 
                 if (triggerName.rfind("Focused Eyebeam", 0) == 0 &&
-                    bot->GetDistance2d(unit) < ULDUAR_KOLOGARN_EYEBEAM_RADIUS + 1.0f)
+                    bot->GetDistance2d(unit) < ULDUAR_KOLOGARN_EYEBEAM_DODGE_DISTANCE)
                 {
                     return true;
                 }
@@ -507,6 +507,23 @@ bool KologarnCrunchArmorTrigger::IsActive()
         return false;
 
     return bot->HasAura(SPELL_CRUNCH_ARMOR);
+}
+
+bool KologarnSpreadPositioningTrigger::IsActive()
+{
+    Unit* boss = AI_VALUE2(Unit*, "find target", "kologarn");
+    if (!boss || !boss->IsAlive())
+        return false;
+
+    // Tanks stay on the boss; only ranged DPS and healers spread.
+    if (botAI->IsTank(bot))
+        return false;
+    if (!botAI->IsRanged(bot) && !botAI->IsHeal(bot))
+        return false;
+
+    uint32 slot = bot->GetGUID().GetCounter() % ULDUAR_KOLOGARN_SPREAD_POSITION_COUNT;
+    Position const& spot = ULDUAR_KOLOGARN_SPREAD_POSITIONS[slot];
+    return bot->GetExactDist2d(spot.GetPositionX(), spot.GetPositionY()) > ULDUAR_KOLOGARN_SPREAD_TOLERANCE;
 }
 
 bool AuriayaFallFromFloorTrigger::IsActive()

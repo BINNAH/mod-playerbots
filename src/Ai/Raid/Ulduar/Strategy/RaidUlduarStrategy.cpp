@@ -120,6 +120,10 @@ void RaidUlduarStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         "kologarn crunch armor trigger",
         { NextAction("kologarn crunch armor action", ACTION_RAID) }));
 
+    triggers.push_back(new TriggerNode(
+        "kologarn spread positioning trigger",
+        { NextAction("kologarn spread positioning action", ACTION_RAID) }));
+
     //
     // Auriaya
     //

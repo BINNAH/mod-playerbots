@@ -1,0 +1,16 @@
+{
+  "name": "anubrekhan",
+  "boss": "anub'rekhan",
+  "rules": [
+    {
+      "trigger": { "shape": "encounter_active" },
+      "actions": [
+        {
+          "shape": "orbit_point",
+          "params": { "x": 3272.49, "y": -3476.27, "radius": 45.0, "segments": 16, "clockwise": true },
+          "priority": 1
+        }
+      ]
+    }
+  ]
+}

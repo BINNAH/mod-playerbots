@@ -186,6 +186,14 @@ public:
     bool isUseful() override;
 };
 
+class KologarnSpreadPositioningAction : public MovementAction
+{
+public:
+    KologarnSpreadPositioningAction(PlayerbotAI* botAI) : MovementAction(botAI, "kologarn spread positioning action") {}
+    bool Execute(Event event) override;
+    bool isUseful() override;
+};
+
 class AuriayaFallFromFloorAction : public Action
 {
 public:

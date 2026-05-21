@@ -18,8 +18,10 @@
 #include "Ai/Raid/Ulduar/RaidUlduarActionContext.h"
 #include "Ai/Raid/Onyxia/RaidOnyxiaActionContext.h"
 #include "Ai/Raid/Icecrown/RaidIccActionContext.h"
+#include "Ai/Raid/TrialOfTheCrusader/RaidTocActionContext.h"
 #include "Ai/Dungeon/TbcDungeonActionContext.h"
 #include "Ai/Dungeon/WotlkDungeonActionContext.h"
+#include "Ai/Raid/JsonStrategy/JsonStrategyContexts.h"
 
 void AiObjectContext::BuildSharedActionContexts(SharedNamedObjectContextList<Action>& actionContexts)
 {
@@ -42,6 +44,7 @@ void AiObjectContext::BuildSharedActionContexts(SharedNamedObjectContextList<Act
     actionContexts.Add(new RaidUlduarActionContext());
     actionContexts.Add(new RaidOnyxiaActionContext());
     actionContexts.Add(new RaidIccActionContext());
+    actionContexts.Add(new RaidTocActionContext());
     actionContexts.Add(new TbcDungeonAuchenaiCryptsActionContext());
     actionContexts.Add(new WotlkDungeonUKActionContext());
     actionContexts.Add(new WotlkDungeonNexActionContext());
@@ -58,4 +61,5 @@ void AiObjectContext::BuildSharedActionContexts(SharedNamedObjectContextList<Act
     actionContexts.Add(new WotlkDungeonFoSActionContext());
     actionContexts.Add(new WotlkDungeonPoSActionContext());
     actionContexts.Add(new WotlkDungeonToCActionContext());
+    actionContexts.Add(new JsonStrategyActionContext());
 }

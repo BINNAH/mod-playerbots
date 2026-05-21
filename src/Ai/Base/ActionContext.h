@@ -39,6 +39,7 @@
 #include "LeaveGroupAction.h"
 #include "LootAction.h"
 #include "LootRollAction.h"
+#include "AutopilotMoveAction.h"
 #include "MoveToRpgTargetAction.h"
 #include "MoveToTravelTargetAction.h"
 #include "MovementActions.h"
@@ -134,6 +135,7 @@ public:
         creators["flee to group leader"] = &ActionContext::flee_to_group_leader;
         creators["runaway"] = &ActionContext::runaway;
         creators["stay"] = &ActionContext::stay;
+        creators["autopilot move"] = &ActionContext::autopilot_move;
         creators["sit"] = &ActionContext::sit;
         creators["aggressive target"] = &ActionContext::aggressive_target;
         creators["attack anything"] = &ActionContext::attack_anything;
@@ -342,6 +344,7 @@ private:
     static Action* attack_least_hp_target(PlayerbotAI* botAI) { return new AttackLeastHpTargetAction(botAI); }
     static Action* attack_enemy_player(PlayerbotAI* botAI) { return new AttackEnemyPlayerAction(botAI); }
     static Action* stay(PlayerbotAI* botAI) { return new StayAction(botAI); }
+    static Action* autopilot_move(PlayerbotAI* botAI) { return new AutopilotMoveAction(botAI); }
     static Action* sit(PlayerbotAI* botAI) { return new SitAction(botAI); }
     static Action* runaway(PlayerbotAI* botAI) { return new RunAwayAction(botAI); }
     static Action* follow(PlayerbotAI* botAI) { return new FollowAction(botAI); }

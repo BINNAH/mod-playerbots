@@ -14,14 +14,14 @@ public:
     virtual float GetValue(Action* action);
 };
 
-//class HeiganDanceMultiplier : public Multiplier
-//{
-//public:
-//    HeiganDanceMultiplier(PlayerbotAI* ai) : Multiplier(ai, "helgan dance") {}
-//
-//public:
-//    virtual float GetValue(Action* action);
-//};
+class HeiganDanceMultiplier : public Multiplier
+{
+public:
+    HeiganDanceMultiplier(PlayerbotAI* ai) : Multiplier(ai, "heigan dance") {}
+
+public:
+    virtual float GetValue(Action* action);
+};
 
 class LoathebGenericMultiplier : public Multiplier
 {
@@ -110,6 +110,26 @@ public:
 
 private:
     GluthBossHelper helper;
+};
+
+// Maexxna does two jobs:
+//  1. Web Wrap target lock — while a Web Wrap NPC is alive, suppress the default
+//     DpsAssist target re-selection so the web-wrap action's swap onto the wrap
+//     sticks instead of flickering back to the boss every tick.
+//  2. Cooldown banking — hold the raid's burst cooldowns (and, with a low-HP
+//     safety valve, the tanks' defensives) until the boss enters her sub-30%
+//     Frenzy, then release everything for the burn.
+class MaexxnaGenericMultiplier : public Multiplier
+{
+public:
+    MaexxnaGenericMultiplier(PlayerbotAI* ai) : Multiplier(ai, "maexxna generic"), helper(ai) {}
+    float GetValue(Action* action) override;
+
+private:
+    // Tanks stop holding their defensives if they fall to this HP% before 30%,
+    // so a bot never dies sitting on an unused cooldown.
+    static constexpr float TANK_DEFENSIVE_HP_FLOOR = 50.0f;
+    MaexxnaBossHelper helper;
 };
 
 #endif

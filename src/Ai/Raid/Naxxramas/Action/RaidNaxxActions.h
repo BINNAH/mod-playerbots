@@ -4,6 +4,7 @@
 #include "Action.h"
 #include "AttackAction.h"
 #include "GenericActions.h"
+#include "GenericSpellActions.h"
 #include "MovementActions.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
@@ -81,8 +82,16 @@ public:
 class HeiganPlatformAction : public MovementAction
 {
 public:
-    HeiganPlatformAction(PlayerbotAI* ai) : MovementAction(ai, "heigan platform") {}
+    HeiganPlatformAction(PlayerbotAI* ai)
+        : MovementAction(ai, "heigan platform"), slow_phase_start_ms(0), last_seen_ms(0) {}
     bool Execute(Event event) override;
+
+private:
+    // Slow-phase clock, mirroring HeiganDanceAction. Lets melee DPS predict the
+    // +90s teleport and leave the platform a few seconds early to join the dance
+    // (see RaidNaxxActions_Heigan.cpp). Re-anchored on the fast->slow resume.
+    uint32 slow_phase_start_ms;
+    uint32 last_seen_ms;
 };
 
 class HeiganDanceAction : public MovementAction
@@ -195,6 +204,28 @@ protected:
     FourHorsemenBossHelper helper;
 };
 
+class FourHorsemenAvoidVoidZoneAction : public MovementAction
+{
+public:
+    FourHorsemenAvoidVoidZoneAction(PlayerbotAI* ai)
+        : MovementAction(ai, "four horsemen avoid void zone"), helper(ai) {}
+    bool Execute(Event event) override;
+
+protected:
+    FourHorsemenBossHelper helper;
+};
+
+class FourHorsemenHealerBleedOffMarkAction : public MovementAction
+{
+public:
+    FourHorsemenHealerBleedOffMarkAction(PlayerbotAI* ai)
+        : MovementAction(ai, "four horsemen healer bleed off mark"), helper(ai) {}
+    bool Execute(Event event) override;
+
+protected:
+    FourHorsemenBossHelper helper;
+};
+
 // class SapphironGroundMainTankPositionAction : public MovementAction
 // {
 // public:
@@ -248,6 +279,66 @@ public:
 
 private:
     KelthuzadBossHelper helper;
+};
+
+// P1 has the raid AoEing waves of adds in the central pit while KT himself is
+// flagged non-attackable in his alcove. Pets on REACT_AGGRESSIVE leash out to
+// soldiers still in the side rooms and pull entire alcoves into the raid.
+// Park pets on passive during P1 and sic them on the bot's current target so
+// they still contribute DPS. P2 (KT attackable) restores aggressive.
+class KelthuzadControlPetAction : public Action
+{
+public:
+    KelthuzadControlPetAction(PlayerbotAI* ai) : Action(ai, "kel'thuzad control pet"), helper(ai) {}
+    virtual bool Execute(Event event);
+
+private:
+    KelthuzadBossHelper helper;
+};
+
+// DPS focus-target switch onto the Web Wrap NPC that spawns when a non-tank
+// gets webbed (entry 16486). Sits above the default attacker selection so the
+// bot leaves the boss until the wrapped player is freed.
+class MaexxnaAttackWebWrapAction : public AttackAction
+{
+public:
+    MaexxnaAttackWebWrapAction(PlayerbotAI* ai)
+        : AttackAction(ai, "maexxna attack web wrap"), helper(ai) {}
+    bool Execute(Event event) override;
+
+private:
+    MaexxnaBossHelper helper;
+};
+
+// Holy paladin external for the sub-30% Web Spray: Hand of Sacrifice (6940)
+// redirects 30% of the tank's damage to the paladin for 12s. Mirrors
+// BuffOnMainTankAction so the cast lands on the "main tank" value; isUseful /
+// isPossible already gate on knowing the spell, it being off cooldown, and the
+// tank not already carrying the buff. The pre-Web-Spray trigger handles timing.
+class MaexxnaHandOfSacrificeOnMainTankAction : public BuffOnMainTankAction
+{
+public:
+    MaexxnaHandOfSacrificeOnMainTankAction(PlayerbotAI* ai)
+        : BuffOnMainTankAction(ai, "hand of sacrifice") {}
+};
+
+// Holy priest external for the sub-30% Web Spray: Guardian Spirit (47788)
+// prevents the next lethal hit and boosts healing taken by 40% for 10s — the
+// best anti-stun tool since it carries through the window when no heal can
+// land. The generic "guardian spirit on party" action targets the lowest-HP
+// party member; this variant forces the main tank instead (same retarget trick
+// as BuffOnMainTankAction).
+class MaexxnaGuardianSpiritOnMainTankAction : public HealPartyMemberAction
+{
+public:
+    MaexxnaGuardianSpiritOnMainTankAction(PlayerbotAI* ai)
+        : HealPartyMemberAction(ai, "guardian spirit", 40.0f, HealingManaEfficiency::MEDIUM) {}
+
+    Value<Unit*>* GetTargetValue() override
+    {
+        return context->GetValue<Unit*>("main tank", "guardian spirit");
+    }
+    std::string const getName() override { return "guardian spirit on main tank"; }
 };
 
 class AnubrekhanChooseTargetAction : public AttackAction
@@ -322,5 +413,21 @@ private:
 //    PatchwerkRangedPositionAction(PlayerbotAI* ai) : MovementAction(ai, "patchwerk ranged position") {}
 //    bool Execute(Event event) override;
 //};
+
+// Noth the Plaguebringer.
+//
+// Off-tank (assist tank index 0) duty: the boss summons waves of Plagued
+// Warriors/Champions/Guardians scattered around the room. This action sweeps
+// up any add that isn't already on a tank (taunting it off squishies) and
+// drags the whole pack onto the main tank's position — i.e. onto Noth — so
+// melee cleave and the boss-target AoE chew them down together. Falls back to
+// Noth's own position (then his fixed ground spot) when no main tank is found,
+// which covers the balcony phase where Noth is off the threat list.
+class NothAddTankAction : public AttackAction
+{
+public:
+    NothAddTankAction(PlayerbotAI* ai) : AttackAction(ai, "noth tank adds") {}
+    bool Execute(Event event) override;
+};
 
 #endif

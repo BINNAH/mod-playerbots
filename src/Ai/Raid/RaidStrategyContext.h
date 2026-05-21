@@ -18,6 +18,7 @@
 #include "RaidUlduarStrategy.h"
 #include "RaidOnyxiaStrategy.h"
 #include "RaidIccStrategy.h"
+#include "RaidTocStrategy.h"
 
 class RaidStrategyContext : public NamedObjectContext<Strategy>
 {
@@ -40,6 +41,7 @@ public:
         creators["ulduar"] = &RaidStrategyContext::ulduar;
         creators["onyxia"] = &RaidStrategyContext::onyxia;
         creators["icc"] = &RaidStrategyContext::icc;
+        creators["toc"] = &RaidStrategyContext::toc;
     }
 
 private:
@@ -59,6 +61,7 @@ private:
     static Strategy* onyxia(PlayerbotAI* botAI) { return new RaidOnyxiaStrategy(botAI); }
     static Strategy* ulduar(PlayerbotAI* botAI) { return new RaidUlduarStrategy(botAI); }
     static Strategy* icc(PlayerbotAI* botAI) { return new RaidIccStrategy(botAI); }
+    static Strategy* toc(PlayerbotAI* botAI) { return new RaidTocStrategy(botAI); }
 };
 
 #endif

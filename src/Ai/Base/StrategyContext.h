@@ -8,6 +8,7 @@
 
 #include "AggressiveStrategy.h"
 #include "AttackEnemyPlayersStrategy.h"
+#include "AutopilotStrategy.h"
 #include "BattlegroundStrategy.h"
 #include "CastTimeStrategy.h"
 #include "ChatCommandHandlerStrategy.h"
@@ -211,6 +212,7 @@ public:
     MovementStrategyContext() : NamedObjectContext<Strategy>(false, true)
     {
         creators["follow"] = &MovementStrategyContext::follow_master;
+        creators["autopilot"] = &MovementStrategyContext::autopilot;
         creators["stay"] = &MovementStrategyContext::stay;
         creators["runaway"] = &MovementStrategyContext::runaway;
         creators["flee from adds"] = &MovementStrategyContext::flee_from_adds;
@@ -220,6 +222,7 @@ public:
 private:
     static Strategy* guard(PlayerbotAI* botAI) { return new GuardStrategy(botAI); }
     static Strategy* follow_master(PlayerbotAI* botAI) { return new FollowMasterStrategy(botAI); }
+    static Strategy* autopilot(PlayerbotAI* botAI) { return new AutopilotStrategy(botAI); }
     static Strategy* stay(PlayerbotAI* botAI) { return new StayStrategy(botAI); }
     static Strategy* runaway(PlayerbotAI* botAI) { return new RunawayStrategy(botAI); }
     static Strategy* flee_from_adds(PlayerbotAI* botAI) { return new FleeFromAddsStrategy(botAI); }

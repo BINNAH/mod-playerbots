@@ -141,6 +141,62 @@ public:
     bool IsActive() override;
 };
 
+// DPS only — fires while a Web Wrap NPC is alive in the room so DPS swap onto
+// it to free the wrapped raid member. Tanks stay on the boss, healers keep the
+// raid up.
+class MaexxnaWebWrapTrigger : public Trigger
+{
+public:
+    MaexxnaWebWrapTrigger(PlayerbotAI* ai) : Trigger(ai, "maexxna web wrap"), helper(ai) {}
+    bool IsActive() override;
+
+private:
+    MaexxnaBossHelper helper;
+};
+
+// Sub-30% (Frenzy) only: the three triggers below fire in the short window just
+// before each Web Spray (MaexxnaBossHelper::WebSprayImminent) so the protective
+// cooldown is active when the raid-wide stun lands. Reactive healing can't save
+// the tank during the stun, so everything must be pre-cast.
+
+// Holy paladin → Hand of Sacrifice on the main tank.
+class MaexxnaPreWebSprayHandOfSacrificeTrigger : public Trigger
+{
+public:
+    MaexxnaPreWebSprayHandOfSacrificeTrigger(PlayerbotAI* ai)
+        : Trigger(ai, "maexxna pre web spray hand of sacrifice"), helper(ai) {}
+    bool IsActive() override;
+
+private:
+    MaexxnaBossHelper helper;
+};
+
+// Holy priest → Guardian Spirit on the main tank.
+class MaexxnaPreWebSprayGuardianSpiritTrigger : public Trigger
+{
+public:
+    MaexxnaPreWebSprayGuardianSpiritTrigger(PlayerbotAI* ai)
+        : Trigger(ai, "maexxna pre web spray guardian spirit"), helper(ai) {}
+    bool IsActive() override;
+
+private:
+    MaexxnaBossHelper helper;
+};
+
+// Main tank → pop its own big defensive (Shield Wall / Icebound Fortitude /
+// Survival Instincts / Divine Protection) before the stun rather than reacting
+// to the HP dip after it, when the tank is itself stunned and can't act.
+class MaexxnaPreWebSprayTankDefensiveTrigger : public Trigger
+{
+public:
+    MaexxnaPreWebSprayTankDefensiveTrigger(PlayerbotAI* ai)
+        : Trigger(ai, "maexxna pre web spray tank defensive"), helper(ai) {}
+    bool IsActive() override;
+
+private:
+    MaexxnaBossHelper helper;
+};
+
 //class PatchwerkTankTrigger : public Trigger
 //{
 //public:
@@ -223,6 +279,51 @@ private:
     FourHorsemenBossHelper helper;
 };
 
+// Lady Blaumeux drops Void Zones (NPC 16697) on her current target every ~15s
+// during the attract dance, and Sir Zeliek's Holy Wrath chains in roughly the
+// same arc. The attractors stay at one preset spot for ~67s, so without this
+// trigger they sit in a stack of voids until rotation. Applies to every bot in
+// the encounter — tanks and DPS at the corners can also catch a stray drop.
+class FourHorsemenVoidZoneTrigger : public Trigger
+{
+public:
+    FourHorsemenVoidZoneTrigger(PlayerbotAI* ai) : Trigger(ai, "four horsemen void zone"), helper(ai) {}
+    bool IsActive() override;
+
+private:
+    FourHorsemenBossHelper helper;
+};
+
+// Non-attractor healers only — attractors must stay within 45y of Lady/Sir or
+// the boss casts its punishment AoE on the raid, so they eat the marks. Fires
+// at 4 stacks and stays active until the aura fully decays (hysteresis is in
+// FourHorsemenBossHelper::ShouldHealerBleedOffMark).
+class FourHorsemenHealerHighMarkTrigger : public Trigger
+{
+public:
+    FourHorsemenHealerHighMarkTrigger(PlayerbotAI* ai) : Trigger(ai, "four horsemen healer high mark"), helper(ai) {}
+    bool IsActive() override;
+
+private:
+    FourHorsemenBossHelper helper;
+};
+
+// Fires for every bot during the opening burst (FourHorsemenBossHelper::
+// IsOpeningWindow) so each pops its personal damage-reduction cooldown while
+// the pull is at its roughest. Each bot only has its own class's action; the
+// rest no-op. Wired below void-zone/bleed-off priority so survival movement
+// still wins the tick.
+class FourHorsemenOpeningDefensiveTrigger : public Trigger
+{
+public:
+    FourHorsemenOpeningDefensiveTrigger(PlayerbotAI* ai)
+        : Trigger(ai, "four horsemen opening defensive"), helper(ai) {}
+    bool IsActive() override;
+
+private:
+    FourHorsemenBossHelper helper;
+};
+
 class SapphironGroundTrigger : public Trigger
 {
 public:
@@ -271,6 +372,16 @@ public:
 
 private:
     LoathebBossHelper helper;
+};
+
+// Fires for the off-tank (assist tank index 0) while Noth is engaged. Detects
+// the encounter via Noth himself (ground phase) or, when he's off the threat
+// list, via his summoned adds (balcony phase).
+class NothAddTankTrigger : public Trigger
+{
+public:
+    NothAddTankTrigger(PlayerbotAI* ai) : Trigger(ai, "noth add tank") {}
+    bool IsActive() override;
 };
 
 #endif

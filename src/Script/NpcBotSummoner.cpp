@@ -41,8 +41,10 @@ namespace
 
     // Action ID space:
     //   GOSSIP_ACTION_INFO_DEF + <lowGuid>      -> summon that bot
+    //   ACTION_SUMMON_ALL                        -> summon every offline bot
     //   ACTION_DISMISS_ALL                       -> log out every summoned bot
     //   ACTION_CLOSE                             -> close the menu
+    constexpr uint32 ACTION_SUMMON_ALL      = GOSSIP_ACTION_INFO_DEF + 0xFFFFFC;
     constexpr uint32 ACTION_DISMISS_ALL     = GOSSIP_ACTION_INFO_DEF + 0xFFFFFD;
     constexpr uint32 ACTION_CLOSE           = GOSSIP_ACTION_INFO_DEF + 0xFFFFFF;
     constexpr uint32 ACTION_NOOP            = GOSSIP_ACTION_INFO_DEF + 0xFFFFFE;
@@ -216,6 +218,30 @@ namespace
 
             h.PSendSysMessage("{}", line.str());
         }
+    }
+
+    // Build the SQL "IN (...)" list of account ids the master can pull bots
+    // from: their own account plus any trusted-linked accounts. Gated on
+    // allowTrustedAccountBots to mirror PlayerbotMgr's own addaccount check.
+    std::string BuildAccountInList(uint32 masterAccount)
+    {
+        std::ostringstream out;
+        out << masterAccount;
+        if (sPlayerbotAIConfig.allowTrustedAccountBots)
+        {
+            QueryResult linkResult = PlayerbotsDatabase.Query(
+                "SELECT linked_account_id FROM playerbots_account_links WHERE account_id = {}",
+                masterAccount);
+            if (linkResult)
+            {
+                do
+                {
+                    out << "," << linkResult->Fetch()[0].Get<uint32>();
+                }
+                while (linkResult->NextRow());
+            }
+        }
+        return out.str();
     }
 
     // -----------------------------------------------------------------------
@@ -449,82 +475,84 @@ public:
                 onlineBots.insert(it->first);
         }
 
-        // Build the list of account IDs to source bots from: master + linked.
-        // The linked-accounts table lives in the playerbots DB and is keyed
-        // bidirectionally, so a single query gets every account linked to us.
-        // Gated on allowTrustedAccountBots to mirror PlayerbotMgr's own
-        // addaccount security check (PlayerbotMgr.cpp:702).
-        std::ostringstream accountIn;
-        accountIn << accountId;
-        if (sPlayerbotAIConfig.allowTrustedAccountBots)
-        {
-            QueryResult linkResult = PlayerbotsDatabase.Query(
-                "SELECT linked_account_id FROM playerbots_account_links WHERE account_id = {}",
-                accountId);
-            if (linkResult)
-            {
-                do
-                {
-                    accountIn << "," << linkResult->Fetch()[0].Get<uint32>();
-                }
-                while (linkResult->NextRow());
-            }
-        }
-
         QueryResult result = CharacterDatabase.Query(
             "SELECT guid, name, class, level FROM characters "
             "WHERE account IN ({}) AND name <> '{}' "
             "ORDER BY level DESC, name ASC",
-            accountIn.str(), masterName);
+            BuildAccountInList(accountId), masterName);
 
-        uint32 shown = 0;
+        // Fetch rows first so we know offline-count for the top header before
+        // we start emitting menu items.
+        struct BotRow
+        {
+            ObjectGuid::LowType lowGuid;
+            std::string         name;
+            uint8               cls;
+            uint8               lvl;
+            bool                isOnline;
+        };
+        std::vector<BotRow> rows;
         if (result)
         {
             do
             {
                 Field* fields = result->Fetch();
-                ObjectGuid::LowType lowGuid = fields[0].Get<uint32>();
-                std::string botName        = fields[1].Get<std::string>();
-                uint8 botClass             = fields[2].Get<uint8>();
-                uint8 botLevel             = fields[3].Get<uint8>();
+                BotRow r{};
+                r.lowGuid = fields[0].Get<uint32>();
+                r.name    = fields[1].Get<std::string>();
+                r.cls     = fields[2].Get<uint8>();
+                r.lvl     = fields[3].Get<uint8>();
 
-                ObjectGuid botGuid = ObjectGuid::Create<HighGuid::Player>(lowGuid);
-                bool isOnline = onlineBots.count(botGuid) > 0
-                              || ObjectAccessor::FindConnectedPlayer(botGuid) != nullptr;
+                ObjectGuid botGuid = ObjectGuid::Create<HighGuid::Player>(r.lowGuid);
+                r.isOnline = onlineBots.count(botGuid) > 0
+                          || ObjectAccessor::FindConnectedPlayer(botGuid) != nullptr;
 
-                std::ostringstream label;
-                label << botName
-                      << " (Lv " << uint32(botLevel) << " " << ClassName(botClass) << ")";
-                if (isOnline)
-                    label << "  [in world]";
-
-                AddGossipItemFor(player, GOSSIP_ICON_CHAT, label.str(),
-                                 GOSSIP_SENDER_MAIN,
-                                 GOSSIP_ACTION_INFO_DEF + lowGuid);
-
-                if (++shown >= MAX_BOTS_SHOWN)
-                    break;
+                rows.push_back(std::move(r));
             }
             while (result->NextRow());
         }
 
-        if (shown == 0)
+        uint32 offlineCount = 0;
+        uint32 onlineCount  = 0;
+        for (BotRow const& r : rows)
+            (r.isOnline ? onlineCount : offlineCount) += 1;
+
+        // ---- Top-level actions (placed before the individual bot list) ----
+        if (offlineCount > 0)
+            AddGossipItemFor(player, GOSSIP_ICON_TAXI, "Summon all my bots",
+                             GOSSIP_SENDER_MAIN, ACTION_SUMMON_ALL);
+
+        if (onlineCount > 0)
+            AddGossipItemFor(player, GOSSIP_ICON_CHAT, "Dismiss all my summoned bots",
+                             GOSSIP_SENDER_MAIN, ACTION_DISMISS_ALL);
+
+        AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG, "Shop with my bots' tokens ->",
+                         GOSSIP_SENDER_MAIN, ACTION_SHOP_ENTRY);
+
+        // ---- Individual bots ----
+        uint32 shown = 0;
+        for (BotRow const& r : rows)
+        {
+            std::ostringstream label;
+            label << r.name
+                  << " (Lv " << uint32(r.lvl) << " " << ClassName(r.cls) << ")";
+            if (r.isOnline)
+                label << "  [in world]";
+
+            AddGossipItemFor(player, GOSSIP_ICON_CHAT, label.str(),
+                             GOSSIP_SENDER_MAIN,
+                             GOSSIP_ACTION_INFO_DEF + r.lowGuid);
+
+            if (++shown >= MAX_BOTS_SHOWN)
+                break;
+        }
+
+        if (rows.empty())
         {
             AddGossipItemFor(player, GOSSIP_ICON_CHAT,
                              "You have no other characters on this account.",
                              GOSSIP_SENDER_MAIN, ACTION_NOOP);
         }
-        else
-        {
-            AddGossipItemFor(player, GOSSIP_ICON_CHAT,
-                             "Dismiss all my summoned bots",
-                             GOSSIP_SENDER_MAIN, ACTION_DISMISS_ALL);
-        }
-
-        // Token-shop entry point (always available, even with no alts).
-        AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG,
-                         "Shop with my bots' tokens ->",
-                         GOSSIP_SENDER_MAIN, ACTION_SHOP_ENTRY);
 
         AddGossipItemFor(player, GOSSIP_ICON_CHAT, "Nevermind.",
                          GOSSIP_SENDER_MAIN, ACTION_CLOSE);
@@ -674,6 +702,41 @@ public:
         }
 
         ChatHandler handler(player->GetSession());
+
+        if (action == ACTION_SUMMON_ALL)
+        {
+            PlayerbotMgr* mgr = GET_PLAYERBOT_MGR(player);
+            if (!mgr)
+            {
+                handler.PSendSysMessage("Bot system is not available for you yet.");
+                CloseGossipMenuFor(player);
+                return true;
+            }
+
+            uint32 masterAccount = player->GetSession()->GetAccountId();
+            QueryResult result = CharacterDatabase.Query(
+                "SELECT guid FROM characters WHERE account IN ({}) AND name <> '{}'",
+                BuildAccountInList(masterAccount), player->GetName());
+
+            uint32 requested = 0;
+            if (result)
+            {
+                do
+                {
+                    ObjectGuid::LowType lowGuid = result->Fetch()[0].Get<uint32>();
+                    ObjectGuid botGuid = ObjectGuid::Create<HighGuid::Player>(lowGuid);
+                    if (ObjectAccessor::FindConnectedPlayer(botGuid))
+                        continue;  // already in world
+                    mgr->AddPlayerBot(botGuid, masterAccount);
+                    ++requested;
+                }
+                while (result->NextRow());
+            }
+
+            handler.PSendSysMessage("Summoning {} bot(s)...", requested);
+            CloseGossipMenuFor(player);
+            return true;
+        }
 
         if (action == ACTION_DISMISS_ALL)
         {

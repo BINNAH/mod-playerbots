@@ -1,0 +1,43 @@
+{
+  "name": "four_horsemen",
+  "boss": "lady blaumeux",
+  "rules": [
+    {
+      "trigger": { "name": "four horsemen void zone" },
+      "actions": [
+        { "name": "four horsemen avoid void zone", "priority": 4 }
+      ]
+    },
+    {
+      "trigger": { "name": "four horsemen healer high mark" },
+      "actions": [
+        { "name": "four horsemen healer bleed off mark", "priority": 3 }
+      ]
+    },
+    {
+      "trigger": { "name": "four horsemen attractors" },
+      "actions": [
+        { "name": "four horsemen attract alternatively", "priority": 1 }
+      ]
+    },
+    {
+      "trigger": { "name": "four horsemen except attractors" },
+      "actions": [
+        { "name": "four horsemen attack in order", "priority": 1 }
+      ]
+    },
+    {
+      "trigger": { "name": "four horsemen opening defensive" },
+      "actions": [
+        { "name": "shield wall", "priority": 2 },
+        { "name": "last stand", "priority": 2 },
+        { "name": "icebound fortitude", "priority": 2 },
+        { "name": "vampiric blood", "priority": 2 },
+        { "name": "survival instincts", "priority": 2 },
+        { "name": "barkskin", "priority": 2 },
+        { "name": "divine protection", "priority": 2 },
+        { "name": "shamanistic rage", "priority": 2 }
+      ]
+    }
+  ]
+}

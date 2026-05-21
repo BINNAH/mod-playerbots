@@ -44,9 +44,13 @@ void RaidNaxxStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     ));
 
     // Kel'Thuzad
+    // Pet control sits at +3 above position/choose-target — it runs first each
+    // tick so the react-state flip happens before the bot's own target pick
+    // (which the action then forwards to pets in P1).
     triggers.push_back(
         new TriggerNode("kel'thuzad",
         {
+            NextAction("kel'thuzad control pet", ACTION_RAID + 3),
             NextAction("kel'thuzad position", ACTION_RAID + 2),
             NextAction("kel'thuzad choose target", ACTION_RAID + 1)
         })
@@ -70,6 +74,38 @@ void RaidNaxxStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
             NextAction("avoid aoe", ACTION_RAID + 1)
         })
     );
+
+    // DPS swap to the Web Wrap NPC the moment one spawns. +2 priority sits
+    // above the default attacker selection so the bot leaves Maexxna; the
+    // trigger falls off as soon as the wrap is dead (and the victim freed).
+    triggers.push_back(new TriggerNode("maexxna web wrap",
+        { NextAction("maexxna attack web wrap", ACTION_RAID + 2) }
+    ));
+
+    // Sub-30% Web Spray survival chain. Each trigger fires only while frenzied
+    // and in the short window before the next Web Spray, so these long-cooldown
+    // saves land BEFORE the raid-wide stun and carry the tank through it.
+    // ACTION_RAID + 5 sits above the boss positioning/web-wrap nodes but below
+    // emergency healing (ACTION_EMERGENCY), and the casts' own isUseful guards
+    // stop them double-firing once the buff is up.
+    triggers.push_back(new TriggerNode("maexxna pre web spray hand of sacrifice",
+        { NextAction("hand of sacrifice on main tank", ACTION_RAID + 5) }
+    ));
+
+    triggers.push_back(new TriggerNode("maexxna pre web spray guardian spirit",
+        { NextAction("guardian spirit on main tank", ACTION_RAID + 5) }
+    ));
+
+    // One node, one defensive per tank class — only the action matching the
+    // bot's class resolves, the rest no-op, so the main tank pops exactly one.
+    triggers.push_back(new TriggerNode("maexxna pre web spray tank defensive",
+        {
+            NextAction("shield wall", ACTION_RAID + 5),
+            NextAction("icebound fortitude", ACTION_RAID + 5),
+            NextAction("survival instincts", ACTION_RAID + 5),
+            NextAction("divine protection", ACTION_RAID + 5)
+        }
+    ));
 
     // Patchwerk
     //triggers.push_back(new TriggerNode("patchwerk tank",
@@ -111,12 +147,46 @@ void RaidNaxxStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     ));
 
     // four horsemen
+    // Void-zone avoidance is at ACTION_RAID + 4 so it overrides the attract
+    // and attack-in-order actions below; otherwise the bot's preset spot pulls
+    // it straight back into Lady Blaumeux's puddle every tick. Mark bleed-off
+    // at +3 sits below void avoid (acute damage wins) but above the normal
+    // positioning at +1.
+    triggers.push_back(new TriggerNode("four horsemen void zone",
+        { NextAction("four horsemen avoid void zone", ACTION_RAID + 4) }
+    ));
+
+    triggers.push_back(new TriggerNode("four horsemen healer high mark",
+        { NextAction("four horsemen healer bleed off mark", ACTION_RAID + 3) }
+    ));
+
     triggers.push_back(new TriggerNode("four horsemen attractors",
         { NextAction("four horsemen attract alternatively", ACTION_RAID + 1) }
     ));
 
     triggers.push_back(new TriggerNode("four horsemen except attractors",
         { NextAction("four horsemen attack in order", ACTION_RAID + 1) }
+    ));
+
+    // Opening burst: every bot pops its personal damage-reduction cooldown.
+    // One node, one entry per class — only the action matching the bot's class
+    // resolves, the rest no-op (so each bot fires exactly what it has). Curated
+    // to instant, non-locking mitigation: nothing here stops the bot from
+    // healing/DPSing or sheds threat (no Ice Block / Divine Shield / Dispersion).
+    // Sits at +2 — above normal positioning/attack (+1) so it fires promptly,
+    // but below mark bleed-off (+3) and void-zone avoid (+4) so survival
+    // movement still wins the tick.
+    triggers.push_back(new TriggerNode("four horsemen opening defensive",
+        {
+            NextAction("shield wall", ACTION_RAID + 2),
+            NextAction("last stand", ACTION_RAID + 2),
+            NextAction("icebound fortitude", ACTION_RAID + 2),
+            NextAction("vampiric blood", ACTION_RAID + 2),
+            NextAction("survival instincts", ACTION_RAID + 2),
+            NextAction("barkskin", ACTION_RAID + 2),
+            NextAction("divine protection", ACTION_RAID + 2),
+            NextAction("shamanistic rage", ACTION_RAID + 2)
+        }
     ));
 
     // sapphiron
@@ -126,6 +196,14 @@ void RaidNaxxStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 
     triggers.push_back(new TriggerNode("sapphiron flight",
         { NextAction("sapphiron flight position", ACTION_RAID + 1) }
+    ));
+
+    // First alive paladin flips to Frost Resistance Aura for the fight: helps
+    // with the constant Frost Aura tick, Chill, and softens Frost Breath. The
+    // trigger/action (shared boss-aura subsystem) self-gate to paladins who
+    // know the spell, in a raid group, and aren't already running it.
+    triggers.push_back(new TriggerNode("sapphiron frost resistance trigger",
+        { NextAction("sapphiron frost resistance action", ACTION_RAID) }
     ));
 
     // Gluth
@@ -151,12 +229,20 @@ void RaidNaxxStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         })
     );
 
+    // Noth the Plaguebringer
+    // Off-tank sweeps up the summoned adds and drags them onto the main tank /
+    // Noth so the raid can cleave them. +2 sits above default attacker
+    // selection and movement so the gather/taunt/reposition wins.
+    triggers.push_back(new TriggerNode("noth add tank",
+        { NextAction("noth tank adds", ACTION_RAID + 2) }
+    ));
+
 }
 
 void RaidNaxxStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
 {
     multipliers.push_back(new GrobbulusMultiplier(botAI));
-    //multipliers.push_back(new HeiganDanceMultiplier(botAI));
+    multipliers.push_back(new HeiganDanceMultiplier(botAI));
     multipliers.push_back(new LoathebGenericMultiplier(botAI));
     multipliers.push_back(new ThaddiusGenericMultiplier(botAI));
     multipliers.push_back(new SapphironGenericMultiplier(botAI));
@@ -166,4 +252,5 @@ void RaidNaxxStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
     multipliers.push_back(new FourHorsemenGenericMultiplier(botAI));
     // multipliers.push_back(new GothikGenericMultiplier(botAI));
     multipliers.push_back(new GluthGenericMultiplier(botAI));
+    multipliers.push_back(new MaexxnaGenericMultiplier(botAI));
 }

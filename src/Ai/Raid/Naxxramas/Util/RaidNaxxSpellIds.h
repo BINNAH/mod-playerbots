@@ -55,6 +55,15 @@ namespace NaxxSpellIds
     SPELL_POSITIVE_POLARITY             = 28059,
     SPELL_NEGATIVE_POLARITY             = 28084
 */
+    // Four Horsemen marks — self-cast AoE applied every 12-15s to anyone in
+    // the 45y range of each horseman. Stack damage scales 0/500/1500/4000/
+    // 12500/20000 per cast at stacks 1-6, so 4+ stacks is when non-attractor
+    // healers should bleed off range until the aura expires.
+    static constexpr uint32 MarkOfKorthazz = 28832;
+    static constexpr uint32 MarkOfBlaumeux = 28833;
+    static constexpr uint32 MarkOfRivendare = 28834;
+    static constexpr uint32 MarkOfZeliek = 28835;
+
     // Sapphiron
     static constexpr uint32 Icebolt10 = 28522;
     static constexpr uint32 Icebolt25 = 28526;

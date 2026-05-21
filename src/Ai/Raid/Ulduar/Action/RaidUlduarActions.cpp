@@ -38,8 +38,6 @@ const std::vector<Position> corners = {
     {183.53f, 66.53f, 409.80f}, {383.03f, 75.10f, 411.71f}, {379.74f, -133.05f, 410.88f}, {158.67f, -137.54f, 409.80f}};
 
 const Position ULDUAR_KOLOGARN_RESTORE_POSITION = Position(1764.3749f, -24.02903f, 448.0f, 0.00087690353f);
-const Position ULDUAR_KOLOGARN_EYEBEAM_LEFT_POSITION = Position(1781.2051f, 9.34402f, 449.0f, 0.00087690353f);
-const Position ULDUAR_KOLOGARN_EYEBEAM_RIGHT_POSITION = Position(1763.2561f, -24.44305f, 449.0f, 0.00087690353f);
 const Position ULDUAR_THORIM_JUMP_START_POINT = Position(2137.137f, -291.19025f, 438.24753f, 1.7059844f);
 const Position ULDUAR_YOGG_SARON_BOSS_ROOM_RESTORE_POINT = Position(1928.8923f, -24.871964f, 324.88956f, 6.247805f);
 
@@ -1322,47 +1320,34 @@ bool KologarnRubbleSlowdownAction::Execute(Event /*event*/)
 
 bool KologarnEyebeamAction::Execute(Event /*event*/)
 {
-    float distanceToLeftPoint = bot->GetExactDist(ULDUAR_KOLOGARN_EYEBEAM_LEFT_POSITION);
-    float distanceToRightPoint = bot->GetExactDist(ULDUAR_KOLOGARN_EYEBEAM_RIGHT_POSITION);
-
-    bool runToLeftSide;
-    if (!distanceToLeftPoint)
-        runToLeftSide = true;
-    else if (!distanceToRightPoint)
-        runToLeftSide = false;
-    else
-        runToLeftSide = distanceToRightPoint > distanceToLeftPoint;
-
-    bool teleportedToPoint;
-    KologarnEyebeamTrigger kologarnEyebeamTrigger(botAI);
-    if (runToLeftSide)
+    GuidVector triggers = AI_VALUE(GuidVector, "possible triggers");
+    Unit* closestBeam = nullptr;
+    float closestDist = std::numeric_limits<float>::max();
+    for (ObjectGuid const guid : triggers)
     {
-        teleportedToPoint = bot->TeleportTo(bot->GetMapId(), ULDUAR_KOLOGARN_EYEBEAM_LEFT_POSITION.GetPositionX(),
-                                            ULDUAR_KOLOGARN_EYEBEAM_LEFT_POSITION.GetPositionY(),
-                                            ULDUAR_KOLOGARN_EYEBEAM_LEFT_POSITION.GetPositionZ(),
-                                            ULDUAR_KOLOGARN_EYEBEAM_LEFT_POSITION.GetOrientation());
+        Unit* unit = botAI->GetUnit(guid);
+        if (!unit)
+            continue;
+        std::string name = unit->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale());
+        if (name.rfind("Focused Eyebeam", 0) != 0)
+            continue;
+        float d = bot->GetDistance2d(unit);
+        if (d < closestDist)
+        {
+            closestDist = d;
+            closestBeam = unit;
+        }
     }
-    else
-    {
-        teleportedToPoint = bot->TeleportTo(bot->GetMapId(), ULDUAR_KOLOGARN_EYEBEAM_RIGHT_POSITION.GetPositionX(),
-                                            ULDUAR_KOLOGARN_EYEBEAM_RIGHT_POSITION.GetPositionY(),
-                                            ULDUAR_KOLOGARN_EYEBEAM_RIGHT_POSITION.GetPositionZ(),
-                                            ULDUAR_KOLOGARN_EYEBEAM_RIGHT_POSITION.GetOrientation());
-    }
+    if (!closestBeam)
+        return false;
 
-    if (teleportedToPoint)
-        SetNextMovementDelay(5000);
-
-    return teleportedToPoint;
+    return MoveAway(closestBeam, ULDUAR_KOLOGARN_EYEBEAM_DODGE_DISTANCE);
 }
 
 bool KologarnEyebeamAction::isUseful()
 {
     KologarnEyebeamTrigger kologarnEyebeamTrigger(botAI);
-    if (!kologarnEyebeamTrigger.IsActive())
-        return false;
-
-    return botAI->HasCheat(BotCheatMask::raid);
+    return kologarnEyebeamTrigger.IsActive();
 }
 
 bool KologarnRtiTargetAction::isUseful()
@@ -1396,6 +1381,20 @@ bool KologarnCrunchArmorAction::Execute(Event /*event*/)
 {
     bot->RemoveAura(SPELL_CRUNCH_ARMOR);
     return true;
+}
+
+bool KologarnSpreadPositioningAction::isUseful()
+{
+    KologarnSpreadPositioningTrigger trigger(botAI);
+    return trigger.IsActive();
+}
+
+bool KologarnSpreadPositioningAction::Execute(Event /*event*/)
+{
+    uint32 slot = bot->GetGUID().GetCounter() % ULDUAR_KOLOGARN_SPREAD_POSITION_COUNT;
+    Position const& spot = ULDUAR_KOLOGARN_SPREAD_POSITIONS[slot];
+    return MoveTo(bot->GetMapId(), spot.GetPositionX(), spot.GetPositionY(), spot.GetPositionZ(),
+                  false, false, false, true, MovementPriority::MOVEMENT_COMBAT, true);
 }
 
 bool AuriayaFallFromFloorAction::Execute(Event /*event*/)
