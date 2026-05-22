@@ -10,6 +10,7 @@
 #include "Event.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotFactory.h"
+#include "PlayerbotRepository.h"
 #include "AiObjectContext.h"
 #include "Log.h"
 #include "RandomPlayerbotMgr.h"
@@ -89,6 +90,12 @@ bool ChangeTalentsAction::Execute(Event event)
         out << chat->FormatClass(bot, tab) << "\n";
         out << TalentsHelp();
     }
+
+    // ResetStrategies above rebuilds the live strategies from the new spec, but
+    // never persists them; on relog PlayerbotRepository::Load reapplies the stale
+    // stored co/nc, reverting a respecced bot to its old role (e.g. a frost DK
+    // whose stored "blood" strategy is tank-typed gets pulled back into tanking).
+    PlayerbotRepository::instance().Save(botAI);
 
     botAI->TellMaster(out);
 
