@@ -109,6 +109,16 @@ public:
     void InitTriggers(std::vector<TriggerNode*>& triggers) override;
 };
 
+class SoulstoneBattleRezStrategy : public NonCombatStrategy
+{
+public:
+    SoulstoneBattleRezStrategy(PlayerbotAI* ai);
+    virtual std::string const getName() override { return "ss battlerez"; }
+
+public:
+    void InitTriggers(std::vector<TriggerNode*>& triggers) override;
+};
+
 class UseSpellstoneStrategy : public NonCombatStrategy
 {
 public:

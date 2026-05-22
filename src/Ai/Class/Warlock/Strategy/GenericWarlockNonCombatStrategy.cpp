@@ -196,6 +196,17 @@ void SoulstoneHealerStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     triggers.push_back(new TriggerNode("soulstone", { NextAction("soulstone healer", 24.0f) }));
 }
 
+// Non-combat strategy for selecting battle-rezzers (druids) to receive soulstone
+// Disabled by default
+// To enable, type "nc +ss battlerez"
+// To disable, type "nc -ss battlerez"
+SoulstoneBattleRezStrategy::SoulstoneBattleRezStrategy(PlayerbotAI* ai) : NonCombatStrategy(ai) {}
+
+void SoulstoneBattleRezStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
+{
+    triggers.push_back(new TriggerNode("soulstone", { NextAction("soulstone battlerez", 24.0f) }));
+}
+
 // Non-combat strategy for using Spellstone
 // Enabled by default for Affliction and Demonology specs
 // To enable, type "nc +spellstone"

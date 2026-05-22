@@ -90,6 +90,7 @@ public:
         creators["ss master"] = &WarlockSoulstoneStrategyFactoryInternal::soulstone_master;
         creators["ss tank"] = &WarlockSoulstoneStrategyFactoryInternal::soulstone_tank;
         creators["ss healer"] = &WarlockSoulstoneStrategyFactoryInternal::soulstone_healer;
+        creators["ss battlerez"] = &WarlockSoulstoneStrategyFactoryInternal::soulstone_battlerez;
     }
 
 private:
@@ -97,6 +98,7 @@ private:
     static Strategy* soulstone_master(PlayerbotAI* ai) { return new SoulstoneMasterStrategy(ai); }
     static Strategy* soulstone_tank(PlayerbotAI* ai) { return new SoulstoneTankStrategy(ai); }
     static Strategy* soulstone_healer(PlayerbotAI* ai) { return new SoulstoneHealerStrategy(ai); }
+    static Strategy* soulstone_battlerez(PlayerbotAI* ai) { return new SoulstoneBattleRezStrategy(ai); }
 };
 
 class WarlockCurseStrategyFactoryInternal : public NamedObjectContext<Strategy>
@@ -258,6 +260,7 @@ public:
         creators["soulstone master"] = &WarlockAiObjectContextInternal::soulstone_master;
         creators["soulstone tank"] = &WarlockAiObjectContextInternal::soulstone_tank;
         creators["soulstone healer"] = &WarlockAiObjectContextInternal::soulstone_healer;
+        creators["soulstone battlerez"] = &WarlockAiObjectContextInternal::soulstone_battlerez;
         creators["summon voidwalker"] = &WarlockAiObjectContextInternal::summon_voidwalker;
         creators["summon felguard"] = &WarlockAiObjectContextInternal::summon_felguard;
         creators["summon felhunter"] = &WarlockAiObjectContextInternal::summon_felhunter;
@@ -333,6 +336,7 @@ private:
     static Action* soulstone_master(PlayerbotAI* botAI) { return new UseSoulstoneMasterAction(botAI); }
     static Action* soulstone_tank(PlayerbotAI* botAI) { return new UseSoulstoneTankAction(botAI); }
     static Action* soulstone_healer(PlayerbotAI* botAI) { return new UseSoulstoneHealerAction(botAI); }
+    static Action* soulstone_battlerez(PlayerbotAI* botAI) { return new UseSoulstoneBattleRezAction(botAI); }
     static Action* summon_voidwalker(PlayerbotAI* botAI) { return new CastSummonVoidwalkerAction(botAI); }
     static Action* summon_felguard(PlayerbotAI* botAI) { return new CastSummonFelguardAction(botAI); }
     static Action* summon_felhunter(PlayerbotAI* botAI) { return new CastSummonFelhunterAction(botAI); }

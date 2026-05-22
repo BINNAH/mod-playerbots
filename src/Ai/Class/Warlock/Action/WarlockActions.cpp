@@ -411,6 +411,49 @@ bool UseSoulstoneHealerAction::Execute(Event /*event*/)
     return UseItem(items[0], ObjectGuid::Empty, nullptr, healer);
 }
 
+// Use the soulstone item on a battle-rezzer (druid) with nc strategy "ss battlerez".
+// A soulstoned druid can self-rez after dying and keep the raid's Rebirth chain alive.
+bool UseSoulstoneBattleRezAction::Execute(Event /*event*/)
+{
+    CleanupSoulstoneReservations();
+
+    std::vector<Item*> items = AI_VALUE2(std::vector<Item*>, "inventory items", "soulstone");
+    if (items.empty())
+        return false;
+
+    Player* chosenDruid = nullptr;
+    Group* group = bot->GetGroup();
+    uint32 now = getMSTime();
+    if (group)
+    {
+        for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+        {
+            Player* member = gref->GetSource();
+            // Every max-level druid knows Rebirth, so class is a sufficient test here.
+            if (member && member->IsAlive() && member->getClass() == CLASS_DRUID && !HasSoulstoneAura(member))
+            {
+                std::lock_guard<std::mutex> lock(soulstoneReservationsMutex);
+                if (soulstoneReservations.count(member->GetGUID()) && soulstoneReservations[member->GetGUID()] > now)
+                    continue;  // Already being soulstoned
+
+                float distance = ServerFacade::instance().GetDistance2d(bot, member);
+                if (distance < 30.0f && bot->IsWithinLOSInMap(member))
+                {
+                    chosenDruid = member;
+                    soulstoneReservations[chosenDruid->GetGUID()] = now + 2500;  // Reserve for 2.5 seconds
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!chosenDruid)
+        return false;
+
+    bot->SetSelection(chosenDruid->GetGUID());
+    return UseItem(items[0], ObjectGuid::Empty, nullptr, chosenDruid);
+}
+
 const std::vector<uint32> CastCreateFirestoneAction::firestoneSpellIds = {
     60220,  // Create Firestone (Rank 7)
     27250,  // Rank 5

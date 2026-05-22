@@ -127,6 +127,15 @@ public:
     bool Execute(Event event) override;
 };
 
+// Soulstone the raid's battle-rezzers (druids), so a dead druid can self-rez
+// and resume casting Rebirth. Used by nc strategy "ss battlerez".
+class UseSoulstoneBattleRezAction : public UseSpellItemAction
+{
+public:
+    UseSoulstoneBattleRezAction(PlayerbotAI* botAI) : UseSpellItemAction(botAI, "soulstone") {}
+    bool Execute(Event event) override;
+};
+
 // Summoning Spells
 
 class CastSummonVoidwalkerAction : public CastBuffSpellAction
