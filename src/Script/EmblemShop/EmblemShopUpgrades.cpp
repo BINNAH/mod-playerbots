@@ -6,6 +6,7 @@
 #include <chrono>
 
 #include "EmblemShopUpgrades.h"
+#include "EmblemTiers.h"
 #include "EmblemVendorCache.h"
 
 #include "Playerbots.h"
@@ -22,13 +23,28 @@
 
 namespace
 {
+    // How many of `reqItemId` the bot can effectively spend. For an emblem this
+    // includes every higher-tier emblem (they convert down 1:1); for any other
+    // token it's just that item's count.
+    uint32 SpendableCount(Player* bot, uint32 reqItemId)
+    {
+        if (EmblemTiers::IsEmblem(reqItemId))
+        {
+            uint32 total = 0;
+            for (uint32 e : EmblemTiers::AtOrAbove(reqItemId))
+                total += bot->GetItemCount(e, false);
+            return total;
+        }
+        return bot->GetItemCount(reqItemId, false);
+    }
+
     bool BotCanAfford(Player* bot, ItemExtendedCostEntry const* ec)
     {
         if (!ec)
             return false;
 
         for (uint32 i = 0; i < MAX_ITEM_EXTENDED_COST_REQUIREMENTS; ++i)
-            if (ec->reqitem[i] && bot->GetItemCount(ec->reqitem[i], false) < ec->reqitemcount[i])
+            if (ec->reqitem[i] && SpendableCount(bot, ec->reqitem[i]) < ec->reqitemcount[i])
                 return false;
 
         if (ec->reqhonorpoints && bot->GetHonorPoints() < ec->reqhonorpoints)
@@ -44,11 +60,20 @@ namespace
 
     bool ItemIsUsableByBot(Player* bot, ItemTemplate const* p)
     {
-        // CanUseItem is the comprehensive check: class/race masks AND armor
-        // proficiency (no plate for rogues) AND weapon proficiency AND any
-        // required spells. Catches the cases where AllowableClass alone is too
-        // permissive (e.g. an "any class" cloth chest a rogue shouldn't grab).
-        return bot->CanUseItem(p) == EQUIP_ERR_OK;
+        // CanUseItem(proto) checks class/race masks, RequiredSkill, RequiredSpell
+        // and level — but NOT weapon/armor *type* proficiency, because that is
+        // normally enforced at equip time (CanUseItem(Item*)) via the item's
+        // GetSkill(). Most thrown/bows/guns leave RequiredSkill = 0, so a caster
+        // would otherwise pass here for throwing knives. Replicate the equip-time
+        // proficiency gate so unusable weapon/armor types are excluded.
+        if (bot->CanUseItem(p) != EQUIP_ERR_OK)
+            return false;
+
+        uint32 skill = p->GetSkill();
+        if (skill != 0 && bot->GetSkillValue(skill) == 0)
+            return false;
+
+        return true;
     }
 }
 
@@ -58,7 +83,23 @@ std::vector<UpgradeOption> EmblemShopUpgrades::FindUpgrades(Player* bot, uint32 
     if (!bot)
         return out;
 
-    auto const& offerings = sEmblemVendorCache.GetOfferingsByCurrencyItem(currencyItemId);
+    // Gather offerings payable with this currency. If it's an emblem, also pull
+    // in everything priced in any LOWER-tier emblem — the bot can convert down
+    // 1:1, so e.g. spending Triumph can buy ilvl-200 Conquest/Valor gear.
+    std::vector<EmblemVendorCache::Offering> offerings;
+    if (EmblemTiers::IsEmblem(currencyItemId))
+    {
+        for (uint32 e : EmblemTiers::AtOrBelow(currencyItemId))
+        {
+            auto const& v = sEmblemVendorCache.GetOfferingsByCurrencyItem(e);
+            offerings.insert(offerings.end(), v.begin(), v.end());
+        }
+    }
+    else
+    {
+        auto const& v = sEmblemVendorCache.GetOfferingsByCurrencyItem(currencyItemId);
+        offerings.insert(offerings.end(), v.begin(), v.end());
+    }
     if (offerings.empty())
         return out;
 
@@ -129,6 +170,5 @@ std::vector<UpgradeOption> EmblemShopUpgrades::FindUpgrades(Player* bot, uint32 
     std::sort(out.begin(), out.end(),
         [](UpgradeOption const& a, UpgradeOption const& b) { return a.scoreGain > b.scoreGain; });
 
-    (void)currencyItemId; // referenced for future per-currency tuning; unused right now
     return out;
 }

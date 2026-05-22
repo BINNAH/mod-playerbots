@@ -6,6 +6,7 @@
 #include <chrono>
 
 #include "EmblemShopMgr.h"
+#include "EmblemTiers.h"
 
 #include "Playerbots.h"
 
@@ -16,6 +17,7 @@
 #include "ObjectMgr.h"
 #include "Player.h"
 
+#include <algorithm>
 #include <sstream>
 
 EmblemShopMgr& EmblemShopMgr::Instance()
@@ -33,6 +35,46 @@ namespace
         std::ostringstream o;
         o << fallbackPrefix << " " << itemId;
         return o.str();
+    }
+
+    // Spendable count toward a cost in `reqItemId`: an emblem can be paid with
+    // itself or any higher-tier emblem (1:1 down-conversion); other tokens are
+    // exact.
+    uint32 SpendableCount(Player* bot, uint32 reqItemId)
+    {
+        if (EmblemTiers::IsEmblem(reqItemId))
+        {
+            uint32 total = 0;
+            for (uint32 e : EmblemTiers::AtOrAbove(reqItemId))
+                total += bot->GetItemCount(e, false);
+            return total;
+        }
+        return bot->GetItemCount(reqItemId, false);
+    }
+
+    // Destroy `count` toward a cost in `reqItemId`. For an emblem, consume the
+    // exact tier first, then higher tiers ascending (preserving the highest).
+    void DeductCost(Player* bot, uint32 reqItemId, uint32 count)
+    {
+        if (!EmblemTiers::IsEmblem(reqItemId))
+        {
+            bot->DestroyItemCount(reqItemId, count, true);
+            return;
+        }
+
+        uint32 remaining = count;
+        for (uint32 e : EmblemTiers::AtOrAbove(reqItemId))
+        {
+            if (remaining == 0)
+                break;
+            uint32 have = bot->GetItemCount(e, false);
+            uint32 take = std::min(have, remaining);
+            if (take)
+            {
+                bot->DestroyItemCount(e, take, true);
+                remaining -= take;
+            }
+        }
     }
 }
 
@@ -69,14 +111,15 @@ bool EmblemShopMgr::BuyForBot(Player* bot, uint32 itemId, uint32 extendedCostId,
         return false;
     }
 
-    if (proto->AllowableClass && !(proto->AllowableClass & bot->getClassMask()))
+    // Comprehensive usability gate: class/race masks AND weapon/armor type
+    // proficiency. CanUseItem(proto) covers class/race/RequiredSkill/spell, but
+    // weapon-type proficiency (thrown/bow/gun, plate/mail, …) is normally only
+    // enforced at equip time via the item's GetSkill() — so without this a
+    // caster could buy throwing knives (AllowableClass is often 0 = "any").
+    if (bot->CanUseItem(proto) != EQUIP_ERR_OK ||
+        (proto->GetSkill() != 0 && bot->GetSkillValue(proto->GetSkill()) == 0))
     {
-        errOut = proto->Name1 + " is not usable by " + bot->GetName() + "'s class.";
-        return false;
-    }
-    if (proto->AllowableRace && !(proto->AllowableRace & bot->getRaceMask()))
-    {
-        errOut = proto->Name1 + " is not usable by " + bot->GetName() + "'s race.";
+        errOut = proto->Name1 + " is not usable by " + bot->GetName() + ".";
         return false;
     }
 
@@ -86,7 +129,7 @@ bool EmblemShopMgr::BuyForBot(Player* bot, uint32 itemId, uint32 extendedCostId,
         if (!ec->reqitem[i])
             continue;
 
-        uint32 have = bot->GetItemCount(ec->reqitem[i], false);
+        uint32 have = SpendableCount(bot, ec->reqitem[i]);
         if (have < ec->reqitemcount[i])
         {
             std::ostringstream o;
@@ -135,10 +178,11 @@ bool EmblemShopMgr::BuyForBot(Player* bot, uint32 itemId, uint32 extendedCostId,
         return false;
     }
 
-    // All checks passed — deduct in fixed order: token items, point pools, then store.
+    // All checks passed — deduct in fixed order: token items, point pools, then
+    // store. Emblem costs may be paid with higher-tier emblems (down-conversion).
     for (uint32 i = 0; i < MAX_ITEM_EXTENDED_COST_REQUIREMENTS; ++i)
         if (ec->reqitem[i])
-            bot->DestroyItemCount(ec->reqitem[i], ec->reqitemcount[i], true);
+            DeductCost(bot, ec->reqitem[i], ec->reqitemcount[i]);
 
     if (ec->reqhonorpoints)
         bot->ModifyHonorPoints(-int32(ec->reqhonorpoints));
