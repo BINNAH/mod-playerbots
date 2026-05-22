@@ -213,16 +213,24 @@ bool KelthuzadPositionAction::Execute(Event /*event*/)
             }
             else if (botAI->IsRanged(bot))
             {
+                // Two concentric rings, pushed out from the old 20/32y. Frost
+                // Blast is a 10y flood-fill (see the melee block below), so a
+                // frozen melee cluster (~11.5y from KT) would chain straight into
+                // a ranged sitting at 20y — only 8.5y away. The inner ring now
+                // clears the three melee clusters by ~13y (>10y hop), and the
+                // outer ring is offset half a slot (22.5 deg) so an inner and
+                // outer caster never line up radially within the hop. Both rings
+                // stay inside heal/cast range.
                 uint32 index = botAI->GetRangedIndex(bot);
                 if (index < 8)
                 {
-                    distance = 20.0f;
+                    distance = 26.0f;
                     angle = index * M_PI / 4;
                 }
                 else
                 {
-                    distance = 32.0f;
-                    angle = (index - 8) * M_PI / 4;
+                    distance = 34.0f;
+                    angle = (index - 8) * M_PI / 4 + M_PI / 8;
                 }
                 float dx, dy;
                 dx = helper.center.first + cos(angle) * distance;
@@ -241,6 +249,62 @@ bool KelthuzadPositionAction::Execute(Event /*event*/)
                 }
                 else
                     return false;
+            }
+            // P2 melee Frost Blast spread (4-point). Frost Blast (27808) freezes a
+            // random player, then re-casts itself from each new victim every 1s — a
+            // 10y flood-fill that chains through anyone within 10y of an already-
+            // frozen player (see SpellAuraEffects.cpp case 27808). It freezes the
+            // whole *connected blob*, so the defence is to keep melee in a FEW tight
+            // clusters that are each >10y from every other group — other clusters,
+            // the tank, AND the ranged ring (which is pushed out above for exactly
+            // this reason) — so a frozen cluster has nobody to bridge the chain onto.
+            // With the tank holding KT at the front, the three clusters sit at KT's
+            // left, directly behind, and KT's right (the "4-point" layout).
+            //
+            // Clusters are anchored to the *fixed* tank spot, not KT's live facing,
+            // so they don't spin every time he turns to Frostbolt someone. Radius =
+            // boss+bot combat reach (a hair inside max melee range, ~11.5y given
+            // KT's 10y reach), which puts the 90-degree-separated clusters ~16y
+            // apart — well past the 10y Frost Blast. To fall back to the wider-
+            // margin 3-point (tank + two rear clusters), swap to the 3-cluster
+            // angle table noted below. Healers keep their own positioning; this
+            // only herds melee DPS.
+            else if (!botAI->IsHeal(bot))
+            {
+                Unit* boss = AI_VALUE2(Unit*, "find target", "kel'thuzad");
+                if (!boss)
+                    return false;
+
+                // Offsets from the tank-facing "front". 4-point: KT's left,
+                // behind, KT's right. 3-point alt (wider margin, two rear
+                // clusters): {(float)(3*M_PI/4), (float)(-3*M_PI/4)}, count = 2.
+                static const float kMeleeAngles4[] = {(float)(M_PI / 2.0), (float)M_PI, (float)(-M_PI / 2.0)};
+                const float* angles = kMeleeAngles4;
+                const int clusterCount = 3;
+
+                int meleeIdx = botAI->GetMeleeIndex(bot);
+                if (meleeIdx < 0)
+                    meleeIdx = 0;
+                int cluster = meleeIdx % clusterCount;
+                int rank = meleeIdx / clusterCount;  // position within the cluster
+
+                float frontAngle = boss->GetAngle(helper.tank_pos.first, helper.tank_pos.second);
+                float clusterAngle = frontAngle + angles[cluster];
+                float radius = boss->GetCombatReach() + bot->GetCombatReach();
+                float cx = boss->GetPositionX() + cos(clusterAngle) * radius;
+                float cy = boss->GetPositionY() + sin(clusterAngle) * radius;
+
+                // Fan cluster-mates a couple yards along the tangent so they pack
+                // tightly instead of all shoving onto one coordinate (which
+                // jitters). The cluster still fits inside one Frost Blast footprint,
+                // well clear of its neighbours.
+                float tangent = clusterAngle + (float)(M_PI / 2.0);
+                int sign = (rank % 2 == 0) ? 1 : -1;
+                float lateral = sign * ((rank + 1) / 2) * 2.0f;
+                float dx = cx + cos(tangent) * lateral;
+                float dy = cy + sin(tangent) * lateral;
+                return MoveTo(NAXX_MAP_ID, dx, dy, bot->GetPositionZ(), false, false, false, false,
+                              MovementPriority::MOVEMENT_COMBAT);
             }
         }
         else

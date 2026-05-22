@@ -36,16 +36,16 @@ bool SapphironGroundPositionAction::Execute(Event /*event*/)
     // through Frost Aura.
     if (!botAI->IsRanged(bot) && !botAI->IsHeal(bot))
     {
-        // Melee: keep them off Sapphiron's tail. The rear-cone Tail Sweep
-        // recurs every ~10s; left to free DpsAssist chase, melee routinely
-        // stand directly behind and get whipped. In the rear danger arc, slide
-        // to a side flank (clear of both tail and frontal cleave); otherwise
-        // yield so DpsAssist keeps attacking. FindMeleePosToAvoidTail only
-        // hands back a dest while unsafe, so once on the flank this falls
+        // Melee: keep them on Sapphiron's side flanks, clear of both melee-range
+        // cones. Left to free DpsAssist chase, melee stand in the frontal Cleave
+        // arc or directly behind in the Tail Sweep arc — both recur every ~10s.
+        // While inside either cone, slide to the nearer side flank; otherwise
+        // yield so DpsAssist keeps attacking. FindMeleePosToAvoidCleaveAndTail
+        // only hands back a dest while unsafe, so once on the flank this falls
         // through to DPS — no dancing.
-        std::vector<float> tailDest;
-        if (helper.FindMeleePosToAvoidTail(tailDest))
-            return MoveTo(NAXX_MAP_ID, tailDest[0], tailDest[1], tailDest[2], false, false, false, false,
+        std::vector<float> safeDest;
+        if (helper.FindMeleePosToAvoidCleaveAndTail(safeDest))
+            return MoveTo(NAXX_MAP_ID, safeDest[0], safeDest[1], safeDest[2], false, false, false, false,
                           MovementPriority::MOVEMENT_COMBAT);
         return false;
     }

@@ -297,15 +297,22 @@ public:
         dest = {bot->GetPositionX() + cos(angle) * 5.0f, bot->GetPositionY() + sin(angle) * 5.0f, bot->GetPositionZ()};
         return true;
     }
-    // Tail Sweep (spell 55697) is a wide rear-cone frost hit + knockback that
-    // recurs every ~10s. Melee that chase Sapphiron into the arc behind it eat
-    // it repeatedly. Keep melee on a side flank (boss facing +/- 90 deg), which
-    // sits clear of both the rear tail cone and the frontal cleave. The safe
-    // direction is anchored to the boss's *facing*, and we only reposition while
-    // the bot is actually inside the rear danger cone — otherwise the boss
-    // re-facing the tank every tick makes melee jitter (the same dance the
-    // chill/iceblock code fights). dest is written only when a move is needed.
-    bool FindMeleePosToAvoidTail(std::vector<float>& dest)
+    // Sapphiron's two melee-range cone attacks bracket the boss front-to-back,
+    // both recurring every ~10s:
+    //   * Cleave (spell 19983) — frontal cone cast on the boss's victim. Melee
+    //     DPS that drift into the front arc get cleaved alongside the tank.
+    //   * Tail Sweep (spell 55697) — wide rear cone + knockback.
+    // The only safe melee real estate is the two side flanks (boss facing
+    // +/- 90 deg), which clear BOTH cones. Keep melee there: hand back a flank
+    // destination while the bot is inside either danger cone, and return false
+    // once it's parked on a flank so DpsAssist can attack. The safe direction is
+    // anchored to the boss's *facing*, and we only reposition while actually in
+    // a cone — otherwise the boss re-facing the tank every tick makes melee
+    // jitter (the same dance the chill/iceblock code fights). The bot's own
+    // chase target (when it is the victim) is exempt from the front check: it
+    // can't dodge a cleave aimed at itself by running, and trying to would just
+    // drag the boss around. dest is written only when a move is needed.
+    bool FindMeleePosToAvoidCleaveAndTail(std::vector<float>& dest)
     {
         if (!_unit)
             return false;
@@ -317,15 +324,22 @@ public:
         float bossToBot = _unit->GetAngle(bot);  // direction boss -> bot
         float rear = facing + M_PI;              // tail points opposite the facing
 
-        // Rear danger half-angle. Sapphiron's tail arc is wide; ~75 deg either
-        // side of dead-behind is a safe over-estimate, so the bot starts sliding
-        // out well before it clips the real cone and parks within ~15 deg of the
-        // 90 deg side flank.
+        // Danger half-angles. Both are safe over-estimates so the bot starts
+        // sliding out before it clips the real cone; their gap keeps the 90 deg
+        // side flank clear of both (75 < 90 and 60 < 90), and the flank parks
+        // ~15 deg off the tail / ~30 deg off the cleave.
         const float TAIL_HALF_ANGLE = 5.0f * M_PI / 12.0f;  // 75 degrees
-        if (std::fabs(angleDiff(bossToBot, rear)) > TAIL_HALF_ANGLE)
-            return false;  // already clear of the tail — let DpsAssist attack
+        const float CLEAVE_HALF_ANGLE = M_PI / 3.0f;        // 60 degrees
 
-        // In the cone: head for the nearer side flank.
+        bool inTail = std::fabs(angleDiff(bossToBot, rear)) <= TAIL_HALF_ANGLE;
+        // Don't try to flee a cleave aimed at us — only avoid the front arc when
+        // someone else (the tank) is the boss's target.
+        bool inCleave = _unit->GetVictim() != bot &&
+                        std::fabs(angleDiff(bossToBot, facing)) <= CLEAVE_HALF_ANGLE;
+        if (!inTail && !inCleave)
+            return false;  // already on a side flank — let DpsAssist attack
+
+        // In a danger cone: head for the nearer side flank.
         float leftFlank = facing + M_PI / 2.0f;
         float rightFlank = facing - M_PI / 2.0f;
         float flank = std::fabs(angleDiff(bossToBot, leftFlank)) <= std::fabs(angleDiff(bossToBot, rightFlank))
@@ -464,18 +478,29 @@ public:
     const std::pair<float, float> tankPosThane = {2539.5f, -3018.6f};
     const std::pair<float, float> tankPosBaron = {2587.3f, -2968.0f};
     const std::pair<float, float> healerMidPos = {2563.4f, -2993.3f};
-    // Center-back pocket for the back healers (25-man). Sits near the midpoint
-    // of the two attract spots (~20-25y from each), so a parked healer covers
-    // both ranged soakers without the corner-to-corner ping-pong. It is inside
-    // both back Mark auras (Blaumeux/Zeliek), so these healers still rely on the
-    // bleed-off-at-4-stacks behavior; they are out of range of the front tanks.
-    // TUNABLE: verify heal range to both soakers in-game and nudge if needed.
-    const std::pair<float, float> healerBackPos = {2500.0f, -2935.0f};
-    // The other back healers park a few yards off so they don't pile onto one
-    // point and jitter against each other (collision resolution shows up as one
-    // bot nudging while another holds). All three stay in range of both soakers.
-    const std::pair<float, float> healerBackPos2 = {2506.0f, -2940.0f};
-    const std::pair<float, float> healerBackPos3 = {2494.0f, -2941.0f};
+    // Back-healer side spots (25-man). The old center-back pocket sat inside
+    // BOTH back Mark auras (Blaumeux + Zeliek), so a parked healer collected two
+    // marks at once and leaned on the 4-stack bleed-off constantly. Instead each
+    // back healer parks next to ONE back caster — only that caster's Mark lands —
+    // and the set rotates sides on the Mark cadence (see BackHealerSide) so the
+    // mark being left decays while the new one ramps from zero. Each spot sits
+    // ~5y off its soaker spot (attractPos), safely inside exactly one 45y Mark
+    // aura and clear of the other (~55-60y away). Index 0 = Sir Zeliek side
+    // (Mark of Zeliek), index 1 = Lady Blaumeux side (Mark of Blaumeux).
+    // TUNABLE: verify single-mark coverage + heal range to the soaker in-game.
+    const std::pair<float, float> healerSidePos[2] = {{2505.7f, -2907.6f}, {2479.6f, -2947.2f}};
+    // Side-swap cadence. Lady/Sir cast their Mark every 15s (boss_four_horsemen
+    // .cpp), and per-application damage spikes hard at 4 stacks (4000) vs 3
+    // (1500). Flipping sides about every 3 applications keeps a back healer at
+    // <=3 stacks of either back Mark. Derived from a free-running clock (not a
+    // per-instance combat timer) so a bot's positioning and void-avoid helpers
+    // always agree on the side without shared state; the 4-stack bleed-off
+    // (markBleedoffPos) stays as the backstop if a swap lands late. TUNABLE.
+    static constexpr uint32 HEALER_SIDE_SWAP_MS = 38000;
+    // No horseman realistically dies before this; gate the "pull an extra healer
+    // back" check past it so a healer still building threat on all four during
+    // the pull doesn't read the un-threatened ones as dead and get yanked back.
+    static constexpr uint32 FIRST_KILL_EARLIEST_MS = 20000;
     // Lady Blaumeux's Void Zone (spell 28863) spawns NPC 16697 ("Void Zone")
     // at her current target's location and ticks ~3k shadow/sec in a small
     // radius. The visual disk and damage aura are ~6y; the buffer absorbs the
@@ -567,32 +592,81 @@ public:
         if (diff == RAID_DIFFICULTY_25MAN_NORMAL)
         {
             // The two highest-item-level ranged DPS soak Lady/Sir in the back and
-            // swap sides; the back healers stay parked at healerBackPos. Picking
-            // by ilvl (not roster order) puts your strongest players on the back,
-            // which is the rough spot.
+            // swap sides; the back healers rotate beside them (BackHealerSide).
+            // Picking by ilvl (not roster order) puts your strongest players on
+            // the back, which is the rough spot.
             return IsTopRangedDpsByItemLevel(bot, 2);
         }
         return botAI->IsAssistRangedDpsOfIndex(bot, 0) || botAI->IsAssistHealOfIndex(bot, 0);
     }
-    // 25-man back healers: the three highest-ilvl healers, parked center-back
-    // instead of soaking a corner. Used to route their park spot.
+    // How many of the highest-ilvl healers run the back-caster rotation. Three
+    // by default; once the first horseman is down (the raid burns Thane first,
+    // so a front boss) the front needs less healing, so a fourth healer joins
+    // the back — the "extra healer back from the front" on first kill.
+    uint8 BackHealerCount() { return FirstHorsemanDead() ? 4 : 3; }
+    // 25-man back healers: the top-N highest-ilvl healers, rotating beside the
+    // two back casters instead of soaking the center. Used to route their park
+    // spot. (10-man keeps every healer at healerMidPos — unchanged.)
     bool IsBackHealer(Player* bot)
     {
-        return bot->GetRaidDifficulty() == RAID_DIFFICULTY_25MAN_NORMAL && IsTopHealByItemLevel(bot, 3);
+        return bot->GetRaidDifficulty() == RAID_DIFFICULTY_25MAN_NORMAL &&
+               IsTopHealByItemLevel(bot, BackHealerCount());
     }
-    // Park spot for a non-attractor healer. Back healers spread across the
-    // center-back pocket by ilvl rank (1st→healerBackPos, 2nd→healerBackPos2,
-    // 3rd→healerBackPos3) so they don't pile on one point; everyone else (10-man,
-    // or any healer past the back count) covers the front tanks from healerMidPos.
-    const std::pair<float, float>* HealerParkPos(Player* bot)
+    // Which back caster a back healer is currently parked next to (0 = Sir
+    // Zeliek, 1 = Lady Blaumeux). Healers are split across the two sides by
+    // ilvl-rank parity so both soakers always have a healer nearby, and the
+    // whole set flips every HEALER_SIDE_SWAP_MS — they trade sides, preserving
+    // per-side coverage while each sheds the Mark it was accumulating. Computed
+    // from a free-running clock + rank so every helper instance agrees.
+    int BackHealerSide(Player* bot)
+    {
+        int startSide = RoleRankByItemLevel(bot, true) % 2;
+        uint32 swaps = getMSTime() / HEALER_SIDE_SWAP_MS;
+        return (startSide + swaps) % 2;
+    }
+    // Park spot for a non-attractor healer. Back healers go to their current
+    // side's spot (rotating); a second healer sharing a side is nudged a few
+    // yards toward the same caster (staying inside that one Mark) so they don't
+    // pile on one point and jitter. Everyone else (10-man, or any healer past
+    // the back count) covers the front tanks from healerMidPos.
+    std::pair<float, float> HealerParkPos(Player* bot)
     {
         if (!IsBackHealer(bot))
-            return &healerMidPos;
-        if (IsTopHealByItemLevel(bot, 1))
-            return &healerBackPos;
-        if (IsTopHealByItemLevel(bot, 2))
-            return &healerBackPos2;
-        return &healerBackPos3;
+            return healerMidPos;
+        int side = BackHealerSide(bot);
+        std::pair<float, float> base = healerSidePos[side];
+        uint8 pairIdx = RoleRankByItemLevel(bot, true) / 2;  // 0 or 1 per side
+        float nudge = pairIdx * 4.0f;
+        float dirX = (side == 0) ? 1.0f : -1.0f;  // toward the assigned caster
+        return {base.first + dirX * nudge, base.second};
+    }
+    // Count of horsemen still alive, read from the bot's threat list (range-
+    // independent — a healer keeps threat on every engaged horseman). A dead
+    // horseman drops off the list, so "find target" returns null for it.
+    uint8 AliveHorsemenCount()
+    {
+        Unit* thane = AI_VALUE2(Unit*, "find target", "thane korth'azz");
+        Unit* lady = AI_VALUE2(Unit*, "find target", "lady blaumeux");
+        Unit* sir = AI_VALUE2(Unit*, "find target", "sir zeliek");
+        Unit* baron = AI_VALUE2(Unit*, "find target", "baron rivendare");
+        if (!baron)
+            baron = AI_VALUE2(Unit*, "find target", "highlord mograine");
+        uint8 n = 0;
+        for (Unit* u : {thane, lady, sir, baron})
+            if (u && u->IsAlive())
+                ++n;
+        return n;
+    }
+    // True once at least one horseman is down. The alive>=1 guard keeps a
+    // not-yet-threatened pull (all four read as "missing") from looking like
+    // four deaths, and the time gate covers the brief window before threat
+    // settles on every horseman.
+    bool FirstHorsemanDead()
+    {
+        if (_combat_start_ms == 0 || getMSTime() - _combat_start_ms < FIRST_KILL_EARLIEST_MS)
+            return false;
+        uint8 alive = AliveHorsemenCount();
+        return alive >= 1 && alive <= 3;
     }
     // First few seconds of the encounter — see OPENING_WINDOW_MS.
     bool IsOpeningWindow() const

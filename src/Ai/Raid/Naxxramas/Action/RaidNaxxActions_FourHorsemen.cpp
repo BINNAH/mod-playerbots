@@ -56,41 +56,47 @@ bool FourHorsemenAttackInOrderAction::Execute(Event /*event*/)
     // Split-corner strategy: tanks anchor each melee boss in his own corner
     // (~60y apart, outside both 45y Mark auras); melee + non-attractor ranged
     // DPS converge on the main tank to focus Thane; healers park via
-    // HealerParkPos (back healers center-back, front healer at mid). Once Thane
-    // dies, target rolls to Baron and the front group migrates to his corner —
-    // otherwise DPS get yanked back to Thane's corpse every tick (distance > 4y
-    // from tankPosThane triggers the MoveTo before Attack can pull them toward
-    // Baron).
+    // HealerParkPos (back healers rotate beside one back caster so they eat just
+    // one Mark, front healer holds mid, and an extra healer joins the back once
+    // the first horseman dies). Once Thane dies, target rolls to Baron and the
+    // front group migrates to his corner — otherwise DPS get yanked back to
+    // Thane's corpse every tick (distance > 4y from tankPosThane triggers the
+    // MoveTo before Attack can pull them toward Baron).
     if (target == thane || target == fourth)
     {
-        const std::pair<float, float>* pos = nullptr;
+        float destX, destY;
         if (PlayerbotAI::IsHeal(bot))
-            // Back healers (25-man #0/#1) hold the center-back pocket; the front
-            // healer covers the tanks from the middle. With 2-ranged attractors
-            // no healer attracts, so every healer reaches here.
-            pos = helper.HealerParkPos(bot);
-        else if (target == thane)
         {
-            pos = &helper.tankPosThane;
-            if (botAI->IsAssistTank(bot))
+            // With 2 ranged attractors no healer attracts, so every healer
+            // reaches here. Back healers get their current rotating side spot;
+            // the front healer holds healerMidPos.
+            auto park = helper.HealerParkPos(bot);
+            destX = park.first;
+            destY = park.second;
+            // Detour the back healer's side spot around a void zone sitting on
+            // it — otherwise the avoid action steps out and this MoveTo yanks it
+            // straight back into the puddle next tick (the 5-6y back-and-forth).
+            // The void-avoid action below resolves to the same point so they
+            // agree.
+            if (helper.IsBackHealer(bot))
+            {
+                auto safe = helper.ResolveSafeHealerPos(destX, destY);
+                destX = safe.first;
+                destY = safe.second;
+            }
+        }
+        else
+        {
+            const std::pair<float, float>* pos = &helper.tankPosThane;
+            if (target == thane)
+            {
+                if (botAI->IsAssistTank(bot))
+                    pos = &helper.tankPosBaron;
+            }
+            else  // target == fourth (Baron / Mograine) — Thane is dead
                 pos = &helper.tankPosBaron;
-        }
-        else  // target == fourth (Baron / Mograine) — Thane is dead
-        {
-            pos = &helper.tankPosBaron;
-        }
-
-        // Detour the back healer's park spot around a void zone sitting on it —
-        // otherwise the avoid action steps out and this MoveTo yanks it straight
-        // back into the puddle next tick (the 5-6y back-and-forth). The void-
-        // avoid action below resolves to the same point so they agree.
-        float destX = pos->first;
-        float destY = pos->second;
-        if (helper.IsBackHealer(bot))
-        {
-            auto safe = helper.ResolveSafeHealerPos(destX, destY);
-            destX = safe.first;
-            destY = safe.second;
+            destX = pos->first;
+            destY = pos->second;
         }
 
         if (bot->GetDistance2d(destX, destY) > 4.0f &&
@@ -140,8 +146,8 @@ bool FourHorsemenAvoidVoidZoneAction::Execute(Event /*event*/)
     // stray DPS just radiate away via the generic FleePosition.
     if (helper.IsBackHealer(bot))
     {
-        const std::pair<float, float>* park = helper.HealerParkPos(bot);
-        auto safe = helper.ResolveSafeHealerPos(park->first, park->second);
+        auto park = helper.HealerParkPos(bot);
+        auto safe = helper.ResolveSafeHealerPos(park.first, park.second);
         return MoveTo(bot->GetMapId(), safe.first, safe.second, helper.posZ,
                       false, false, false, false, MovementPriority::MOVEMENT_COMBAT);
     }

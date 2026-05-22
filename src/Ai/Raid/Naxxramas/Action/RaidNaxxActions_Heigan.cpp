@@ -38,8 +38,8 @@ namespace
     // reached the ranged behind him. Moving along the vector toward HeiganPos
     // lands the stack ~5.4y from his home — clear of the dance-floor tiles,
     // still melee range. The platform itself has no eruption GOs.
-    constexpr float kPlatformX = 2793.52f;
-    constexpr float kPlatformY = -3702.23f;
+    constexpr float kPlatformX = 2795.52f;
+    constexpr float kPlatformY = -3705.23f;
     constexpr float kPlatformZ = 274.88f;
     constexpr float kPlatformTolerance = 3.0f;
 

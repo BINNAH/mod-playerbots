@@ -258,7 +258,7 @@ float FourHorsemenGenericMultiplier::GetValue(Action* action)
 
     context->GetValue<bool>("neglect threat")->Set(true);
     // Every position on this fight is scripted (tank corners, attract spots,
-    // healerBackPos, healerMidPos, mark bleed-off). Let the generic movers
+    // back-healer side spots, healerMidPos, mark bleed-off). Let the generic movers
     // compete and you get the classic forward-back dance. Confirmed offenders
     // (caught via the per-tick action log):
     //   - Follow: pushed as a relevance-1 default, so on any tick a parked
@@ -270,7 +270,7 @@ float FourHorsemenGenericMultiplier::GetValue(Action* action)
     //   - ReachPartyMemberToHeal: a back healer's heal list includes the front
     //     tanks/melee/master ~60-70y away (outside its ~40y heal range), so it
     //     runs toward the front to reach them, then the 4HM MoveTo drags it back
-    //     to healerBackPos next tick. Healing is split front/back by design, so
+    //     to its side spot next tick. Healing is split front/back by design, so
     //     a healer must never chase an out-of-range target across the room: it
     //     heals its in-range group from its spot and the other healer covers
     //     the rest.
@@ -283,8 +283,8 @@ float FourHorsemenGenericMultiplier::GetValue(Action* action)
         return 0.0f;
 
     // NOTE: we deliberately do NOT force the back healers instant-only here.
-    // They park at healerBackPos and stay put (the dance is gone now that the
-    // generic movers above are suppressed), so they need their full cast-time
+    // They hold their side spot between rotations (the dance is gone now that
+    // the generic movers above are suppressed), so they need their full cast-time
     // kit (Greater Heal, Flash Heal, Healing Wave, Prayer of Healing, Nourish)
     // for real throughput — an instant-only lock left them barely healing. When
     // they DO have to dodge a void zone or bleed off marks, the move action wins
