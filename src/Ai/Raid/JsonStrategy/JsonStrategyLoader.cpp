@@ -130,7 +130,18 @@ void RaidJsonRuleSet::Load()
                         errors.push_back(fname + ": encounter_active needs a 'boss' (rule or file level)");
                         continue;
                     }
-                    rule.trigger = "json encounter::" + boss;
+                    std::string q = "boss=" + boss;
+                    std::string role = t.value("role", std::string());
+                    if (!role.empty())
+                        q += "|role=" + role;
+                    std::string aura = t.value("boss_aura", std::string());
+                    if (!aura.empty())
+                    {
+                        bool present = t.value("aura_present", true);
+                        bool includeCast = t.value("include_cast", true);
+                        q += "|aura=" + aura + "|has=" + (present ? "1" : "0") + "|cast=" + (includeCast ? "1" : "0");
+                    }
+                    rule.trigger = "json encounter::" + q;
                 }
                 else
                 {
@@ -163,9 +174,9 @@ void RaidJsonRuleSet::Load()
                 else if (a.contains("shape"))
                 {
                     std::string shape = a["shape"].get<std::string>();
+                    json const& p = a.value("params", json::object());
                     if (shape == "orbit_point")
                     {
-                        json const& p = a.value("params", json::object());
                         float x = p.value("x", 0.0f);
                         float y = p.value("y", 0.0f);
                         float radius = p.value("radius", 40.0f);
@@ -174,6 +185,76 @@ void RaidJsonRuleSet::Load()
                         if (segments == 0)
                             segments = 16u;
                         act.name = "json orbit::" + OrbitQualifier(x, y, radius, segments, clockwise);
+                    }
+                    else if (shape == "stack_point")
+                    {
+                        float x = p.value("x", 0.0f);
+                        float y = p.value("y", 0.0f);
+                        float radius = p.value("radius", 5.0f);
+                        char buf[96];
+                        std::snprintf(buf, sizeof(buf), "%.4f,%.4f,%.4f", x, y, radius);
+                        act.name = std::string("json stack::") + buf;
+                    }
+                    else if (shape == "spread")
+                    {
+                        float radius = p.value("radius", 8.0f);
+                        uint32 minInterval = p.value("min_interval", 3000u);
+                        char buf[64];
+                        std::snprintf(buf, sizeof(buf), "%.4f,%u", radius, minInterval);
+                        act.name = std::string("json spread::") + buf;
+                    }
+                    else if (shape == "attack_target")
+                    {
+                        std::string target = p.value("target", fileBoss);
+                        if (target.empty())
+                        {
+                            errors.push_back(fname + ": attack_target needs params.target (or file 'boss')");
+                            continue;
+                        }
+                        act.name = "json attack::" + target;
+                    }
+                    else if (shape == "attack_priority")
+                    {
+                        // params.adds may be a string ("crypt guard") or an array.
+                        std::string adds;
+                        if (p.contains("adds"))
+                        {
+                            if (p["adds"].is_array())
+                            {
+                                for (auto const& el : p["adds"])
+                                {
+                                    if (!adds.empty())
+                                        adds += ",";
+                                    adds += el.get<std::string>();
+                                }
+                            }
+                            else
+                            {
+                                adds = p["adds"].get<std::string>();
+                            }
+                        }
+                        std::string boss = p.value("boss", fileBoss);
+                        if (adds.empty() && boss.empty())
+                        {
+                            errors.push_back(fname + ": attack_priority needs params.adds and/or a boss");
+                            continue;
+                        }
+                        std::string q = "adds=" + adds + "|boss=" + boss;
+                        act.name = "json attackpriority::" + q;
+                    }
+                    else if (shape == "tank_adds")
+                    {
+                        std::string add = p.value("add", std::string());
+                        std::string boss = p.value("boss", fileBoss);
+                        if (add.empty())
+                        {
+                            errors.push_back(fname + ": tank_adds needs params.add");
+                            continue;
+                        }
+                        std::string q = "add=" + add;
+                        if (!boss.empty())
+                            q += "|boss=" + boss;
+                        act.name = "json tankadds::" + q;
                     }
                     else
                     {

@@ -5,30 +5,30 @@ How to write boss tactics as **JSON** that the `json-raid` strategy loads and
 described in `RAID_AI_JSON_PLAN.md`. The hand-tuned C++ strategies are untouched;
 JSON runs *instead of* them only while you toggle it on for a test.
 
-See also: `RAID_AI_PATTERNS.md` (shape vocabulary + what must stay C++) and
-`RAID_AI_INVENTORY.md` (per-raid class→shape lookup).
+**Goal:** express as much raid AI as possible in JSON, so future boss strategies
+are authored as data, not C++. Reach for a generic shape first; drop to C++ only
+for genuinely irreducible mechanics (phase clocks, multi-actor relays — see
+"Hard limits").
 
-> **Mental model:** *Data wires and parameterizes. C++ implements behavior.*
-> JSON can (1) wire existing C++ triggers/actions together with priorities
-> (**Level 1**), and (2) parameterize a small set of generic shapes (**Level 2**).
-> It cannot invent new behavior — irreducibly-complex fights stay in C++.
+See also: `RAID_AI_PATTERNS.md` (shape vocabulary) and `RAID_AI_INVENTORY.md`
+(per-raid class→shape lookup).
+
+> **Mental model:** a rule is `trigger → [actions]`. The **trigger** decides
+> *who* (role) and *when* (boss engaged + optional phase). The **actions** decide
+> *what* (move/attack), in priority order. Both trigger and actions are generic,
+> parameterized shapes — or a by-name reference to existing C++.
 
 ---
 
 ## Where files live
 
 - Drop `*.json` in the directory the worldserver reads at runtime. Default:
-  **`<worldserver-cwd>/raid_strategies/`** (i.e. `server/raid_strategies/` here).
-- Override with `RaidJson.Dir = some/path/` in any loaded `.conf` (e.g.
-  `playerbots.conf`). Trailing slash optional.
-- Reference copies live in the module at
-  `modules/mod-playerbots/data/raid_strategies/` — edit those for version
-  control, but the **server-CWD copy is what loads**. `.rjson status` prints the
-  exact absolute directory it read.
-- One file per boss is the convention, but the loader merges **all** `*.json` in
-  the directory into one rule set. Triggers self-gate (a rule for Anub only fires
-  near Anub), so loading every boss at once is fine — same as the C++ strategy
-  holding all of a raid's bosses.
+  **`<worldserver-cwd>/raid_strategies/`** (i.e. `server/raid_strategies/`).
+- Override with `RaidJson.Dir = some/path/` in any loaded `.conf`.
+- The loader merges **all** `*.json` in the directory into one rule set. Triggers
+  self-gate, so loading every boss at once is fine.
+- Standard JSON (no `//` comments). You can stash notes in an unused key like
+  `"_comment"` — the loader ignores keys it doesn't use.
 
 ---
 
@@ -36,16 +36,12 @@ See also: `RAID_AI_PATTERNS.md` (shape vocabulary + what must stay C++) and
 
 | Command          | What it does                                                                 |
 |------------------|------------------------------------------------------------------------------|
-| `.rjson status`  | Print source dir, file/rule/error counts, and how many of your bots run it.  |
+| `.rjson status`  | Source dir, file/rule/error counts, how many of your bots run it.            |
 | `.rjson reload`  | Re-read every JSON file, rebuild the rule set, re-init your json-raid bots.   |
 | `.rjson on`      | For your bots: strip their C++ instance strategy, add `json-raid` (A/B swap). |
 | `.rjson off`     | For your bots: remove `json-raid`, restore the proper C++ instance strategy.  |
 
-Typical tuning loop: `.rjson on` → pull boss → edit JSON → `.rjson reload` →
-re-pull → repeat. No build, no restart.
-
-`on`/`off` act on the bots **you own** (your spawned playerbots). `reload`/`status`
-also work from the server console, but only re-init bots when run in-game.
+Tuning loop: `.rjson on` → pull → edit JSON → `.rjson reload` → re-pull. No build.
 
 ---
 
@@ -53,149 +49,146 @@ also work from the server console, but only re-init bots when run in-game.
 
 ```jsonc
 {
-  "name": "anubrekhan",          // free-form label (diagnostics only)
-  "boss": "anub'rekhan",         // default boss NAME for encounter_active shapes
+  "name": "anubrekhan",          // label (diagnostics only)
+  "boss": "anub'rekhan",         // default boss NAME for triggers/targets below
   "rules": [
     {
-      "trigger": <TRIGGER>,      // exactly one trigger per rule
-      "actions": [ <ACTION>, ... ]  // one or more, in priority order
+      "trigger": <TRIGGER>,         // exactly one
+      "actions": [ <ACTION>, ... ]  // one or more, each with its own priority
     }
   ]
 }
 ```
 
-A `<TRIGGER>` is **either**:
-- `{ "name": "<registered C++ trigger name>" }`  — **Level 1**, reuse existing, or
-- `{ "shape": "<shape>", ...params }`            — **Level 2**, generic.
-
-An `<ACTION>` is **either**:
-- `{ "name": "<registered C++ action name>", "priority": N }`  — **Level 1**, or
-- `{ "shape": "<shape>", "params": {...}, "priority": N }`      — **Level 2**.
-
-`priority` is the offset added to `ACTION_RAID` (the engine base for raid tactics).
-**Higher wins the tick.** It defaults to `1` if omitted. Mirror the offsets the
-C++ strategy uses (see `RaidNaxxStrategy.cpp`): survival movement high (`+4`),
-positioning low (`+1`).
+`priority` is the offset added to `ACTION_RAID`; **higher wins the tick**, defaults
+to `1`. A rule may list several actions at different priorities — they fall through
+in order (an action that returns "nothing to do" yields to the next-lower one the
+same tick). Mirror the C++ convention: survival/phase movement high (`+3`), add
+pickup / spread mid (`+2`), plain attack low (`+1`).
 
 ---
 
 ## Level 2 — generic shapes (the callable surface)
 
-These are the only parameterized shapes implemented so far. Add a new `Json*`
-class **only when a fight needs it** (don't pre-build shapes).
+### Trigger shape `encounter_active` (→ `JsonEncounterActiveTrigger`)
+The universal condition. Active while the boss is engaged, optionally narrowed by
+role and phase. **Evaluated per bot**, so one rule fans out correctly.
 
-### Trigger shape `encounter_active`  (→ `JsonEncounterActiveTrigger`)
-Active while a creature with the given name is engaged/found nearby (same
-`"find target"` lookup the C++ boss triggers use — match by **name**, not entry).
-
-| Param  | Type   | Default        | Meaning                                  |
-|--------|--------|----------------|------------------------------------------|
-| `boss` | string | file `"boss"`  | Lower-case creature name to detect.      |
-
-```json
-{ "trigger": { "shape": "encounter_active" } }                  // uses file "boss"
-{ "trigger": { "shape": "encounter_active", "boss": "gluth" } } // per-rule override
-```
-
-### Action shape `orbit_point`  (→ `JsonOrbitPointAction`)
-Continuously walk the ring around `(x, y)` — a real orbit (the bot heads to the
-next ring point each tick).
-
-| Param       | Type  | Default | Meaning                                   |
-|-------------|-------|---------|-------------------------------------------|
-| `x`, `y`    | float | 0, 0    | Ring center (world XY on the boss's map). |
-| `radius`    | float | 40      | Ring radius (yards).                      |
-| `segments`  | int   | 16      | Number of waypoints on the ring.          |
-| `clockwise` | bool  | true    | Direction of travel.                      |
+| Field          | Type    | Default     | Meaning                                                        |
+|----------------|---------|-------------|----------------------------------------------------------------|
+| `boss`         | string  | file `boss` | Creature name to detect (`"find target"`, matched by name).    |
+| `role`         | string  | (all)       | Comma-list, OR semantics (see role tokens below).              |
+| `boss_aura`    | string  | (none)      | Phase gate: an aura **on the boss**, by name (e.g. `locust swarm`). |
+| `aura_present` | bool    | true        | `true`: only when the aura is up. `false`: only when it's down. |
+| `include_cast` | bool    | true        | Also treat the phase as active while the boss is **casting** a spell of the same name — so the raid reacts at cast-start, not after the aura lands. Set `false` to gate strictly on the aura. |
 
 ```json
-{ "shape": "orbit_point",
-  "params": { "x": 3272.49, "y": -3476.27, "radius": 45.0, "segments": 16, "clockwise": true },
-  "priority": 1 }
+{ "shape": "encounter_active", "role": "maintank", "boss_aura": "locust swarm", "aura_present": true }
 ```
 
-> **Not a clone of C++ Anub.** The bespoke `AnubrekhanPositionAction` only kites
-> the *tank* around this ring during Locust Swarm and spreads ranged otherwise;
-> `orbit_point` makes **every** bot under the trigger orbit while it's active.
-> Same ring math, simpler behavior — good for proving the pipeline and for
-> fights that genuinely just want everyone circling.
+**Role tokens:** `all`, `maintank`, `offtank`, `tank`, `notmaintank`, `nontank`,
+`ranged`, `melee`, `healer`, `dps`. Combine with commas, e.g. `"ranged,healer"`.
+
+### Action shapes
+
+| Shape             | Class                       | `params`                                  | Behavior |
+|-------------------|-----------------------------|-------------------------------------------|----------|
+| `orbit_point`     | `JsonOrbitPointAction`      | `x, y, radius, segments, clockwise`       | Continuously walk the ring around (x,y) — a real orbit/kite. |
+| `stack_point`     | `JsonStackPointAction`      | `x, y, radius`                            | Move to (x,y) and stay within `radius` (tight raid stack). |
+| `spread`          | `JsonSpreadAction`          | `radius`, `min_interval` (ms, default 3000) | Move away from the nearest **other ranged/healer** within `radius`. Ignores the melee/tank stack and repositions at most once per `min_interval` so casters aren't interrupted. Yields when clear. |
+| `attack_target`   | `JsonAttackTargetAction`    | `target` (default file `boss`)            | Focus the named creature. Yields when already on it. |
+| `attack_priority` | `JsonAttackPriorityAction`  | `adds` (string or array), `boss` (default file `boss`) | Focus the lowest-HP living add whose name is in `adds`; fall back to `boss` when none are up. "Kill adds first, then boss." |
+| `tank_adds`       | `JsonTankAddsAction`        | `add`, `boss` (default file `boss`)       | Off-tank (assist-tank #0) gathers every living add named `add` and drags it onto the main tank / boss. attack → taunt → reposition. |
+
+```json
+{ "shape": "stack_point",     "params": { "x": 3272.49, "y": -3476.27, "radius": 4.0 }, "priority": 3 }
+{ "shape": "spread",          "params": { "radius": 8.0, "min_interval": 3000 }, "priority": 2 }
+{ "shape": "attack_target",   "params": { "target": "anub'rekhan" }, "priority": 1 }
+{ "shape": "attack_priority", "params": { "adds": "crypt guard", "boss": "anub'rekhan" }, "priority": 1 }
+{ "shape": "tank_adds",       "params": { "add": "crypt guard", "boss": "anub'rekhan" }, "priority": 2 }
+```
 
 ---
 
 ## Level 1 — reference existing C++ by name (the escape hatch)
 
 For anything the shapes can't express, name an already-registered C++ trigger or
-action. The JSON only re-wires and re-prioritizes them; the behavior is the
-compiled C++.
+action; JSON only re-wires/re-prioritizes it.
 
-**Where to find valid names** (the left-hand strings in each `creators[...] =`):
-- Triggers: `Naxxramas/RaidNaxxTriggerContext.h`, and the equivalent
-  `Raid<X>TriggerContext.h` per raid.
-- Actions: `Naxxramas/RaidNaxxActionContext.h`, and `Raid<X>ActionContext.h`.
-- Class spells (e.g. `"shield wall"`, `"barkskin"`) come from the class action
-  contexts and are valid too.
+- Triggers: see `Naxxramas/RaidNaxxTriggerContext.h` (and `Raid<X>TriggerContext.h`).
+- Actions: see `Naxxramas/RaidNaxxActionContext.h` (and `Raid<X>ActionContext.h`).
+- Class spells (`"shield wall"`, `"barkskin"`, …) from the class action contexts.
 
-A name that isn't registered silently resolves to nothing — verify against the
-context headers. `four_horsemen.json` is a full Level-1 example (it reproduces
-`RaidNaxxStrategy.cpp` lines ~149-190 as data, including the `+4 / +3 / +2 / +1`
-priority layering).
+`four_horsemen.json` is a full Level-1 example (reproduces `RaidNaxxStrategy.cpp`
+lines ~149-190 as data, including the +4/+3/+2/+1 priority layering). Use Level-1
+when behavior is genuinely bespoke; otherwise prefer a generic shape.
 
 ---
 
 ## Worked example — `anubrekhan.json`
+
+Six rules, all role + phase gated. Outside Locust Swarm: main tank holds the boss,
+off-tank tanks Crypt Guards on the boss, ranged/healers spread for Impale, DPS hit
+the boss. During Locust Swarm: the tank kites the ring while everyone else stacks
+tightly in the center.
 
 ```json
 {
   "name": "anubrekhan",
   "boss": "anub'rekhan",
   "rules": [
-    {
-      "trigger": { "shape": "encounter_active" },
-      "actions": [
-        { "shape": "orbit_point",
-          "params": { "x": 3272.49, "y": -3476.27, "radius": 45.0, "segments": 16, "clockwise": true },
-          "priority": 1 }
-      ]
-    }
+    { "trigger": { "shape": "encounter_active", "role": "maintank",    "boss_aura": "locust swarm", "aura_present": false },
+      "actions": [ { "shape": "attack_target", "params": { "target": "anub'rekhan" }, "priority": 1 } ] },
+
+    { "trigger": { "shape": "encounter_active", "role": "maintank",    "boss_aura": "locust swarm", "aura_present": true },
+      "actions": [ { "shape": "orbit_point", "params": { "x": 3272.49, "y": -3476.27, "radius": 45.0, "segments": 16, "clockwise": true }, "priority": 3 } ] },
+
+    { "trigger": { "shape": "encounter_active", "role": "notmaintank", "boss_aura": "locust swarm", "aura_present": true },
+      "actions": [ { "shape": "stack_point", "params": { "x": 3272.49, "y": -3476.27, "radius": 4.0 }, "priority": 3 } ] },
+
+    { "trigger": { "shape": "encounter_active", "role": "offtank",     "boss_aura": "locust swarm", "aura_present": false },
+      "actions": [ { "shape": "tank_adds", "params": { "add": "crypt guard", "boss": "anub'rekhan" }, "priority": 2 } ] },
+
+    { "trigger": { "shape": "encounter_active", "role": "ranged,healer","boss_aura": "locust swarm", "aura_present": false },
+      "actions": [ { "shape": "spread", "params": { "radius": 8.0 }, "priority": 2 } ] },
+
+    { "trigger": { "shape": "encounter_active", "role": "dps",         "boss_aura": "locust swarm", "aura_present": false },
+      "actions": [ { "shape": "attack_priority", "params": { "adds": "crypt guard", "boss": "anub'rekhan" }, "priority": 1 } ] }
   ]
 }
 ```
 
-Round-trip test (the success criterion): `.rjson on`, pull Anub, watch bots orbit
-the ring. Edit `radius` to `30`, `.rjson reload`, re-pull — the orbit tightens
-instantly, no rebuild. `.rjson off` restores the C++ strategy.
+Why it composes: a ranged DPS matches both the `dps` rule (attack @1) and the
+`ranged,healer` rule (spread @2) — spread wins when stacked, otherwise it yields and
+the bot attacks. During Locust Swarm the `aura_present:false` rules go quiet and the
+two `aura_present:true` rules take over.
 
 ---
 
-## Hard limits — what JSON CANNOT do
+## Hard limits — what stays C++
 
-JSON wires and parameterizes; it does not implement logic. Anything below stays
-in C++ (see the "Bespoke behaviors" list in `RAID_AI_PATTERNS.md`):
+Shapes wire and parameterize; they don't implement novel logic. Keep these in C++
+and reference them by name (Level 1):
 
-- Phase clocks / predicted timers (Heigan dance, Sapphiron flight, Thaddius
-  polarity swaps).
-- Stateful target selection or add-herding (Anub guards, Noth adds, Maexxna web
-  wrap, Gluth zombies).
-- Multi-actor relays / assignments (Four Horsemen corner rotation, Razuvious
-  mind-control, Vashj/Kael mechanics, Yogg, Lich King, Mimiron).
-- Anything reading boss script internals (`_currentSection`, channel state).
+- Phase clocks / predicted timers (Heigan dance, Sapphiron flight, Thaddius swaps).
+- Multi-actor relays / assignments (Four Horsemen corner rotation, Vashj/Kael,
+  Yogg, Lich King, Mimiron, Razuvious mind-control).
+- Anything reading boss script internals (channel state, `_currentSection`).
 
-For these, write the behavior as a C++ action/trigger, register it in the raid's
-context, then **reference it by name** from JSON (Level 1) if you want JSON to own
-the wiring/priority.
+If you find yourself wanting a new *kind* of behavior repeatedly, that's a signal
+to add a new generic shape (below) rather than a one-off C++ action.
 
 ---
 
-## Adding a new Level-2 shape (when a fight needs it)
+## Adding a new Level-2 shape
 
 1. Add a `Json*` class in `JsonStrategy/JsonStrategyActions.{h,cpp}` (or
    `...Triggers`). Multiply-inherit `Qualified`; parse params in
-   `Qualify(std::string)`; override `getName()` to return `"<base>::" + qualifier`.
-2. Register its base name in `JsonStrategyContexts.h`
-   (`creators["<base>"] = ...`).
-3. Teach the loader (`JsonStrategyLoader.cpp`) to translate the new `"shape"` +
-   params into `"<base>::<csv params>"`.
-4. Document it in the Level-2 table above.
-5. Re-run cmake **configure** if you added files (the module is glob-collected;
-   a new file/dir needs a re-configure, not just a build).
+   `Qualify(std::string)`; override `getName()` → `"<base>::" + qualifier`. Wrap an
+   existing C++ primitive where possible (e.g. `MoveInsideAction`, `AttackAction`).
+2. Register its base name in `JsonStrategyContexts.h`.
+3. Teach `JsonStrategyLoader.cpp` to translate the new `shape` + `params` into
+   `"<base>::<encoded params>"` (CSV for numbers, `key=val|key=val` for names).
+4. Document it in the shape table above.
+5. Re-run cmake **configure** if you added files (module is glob-collected).
 ```

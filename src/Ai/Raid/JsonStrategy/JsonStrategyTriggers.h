@@ -9,10 +9,19 @@
 #include "NamedObjectContext.h"  // Qualified
 #include "Trigger.h"
 
-// Shape T7 "encounter_active": active while a creature with the given (lower-
-// cased) name is on the threat list / found nearby. Mirrors the per-boss C++
-// triggers (e.g. AnubrekhanTrigger uses AI_VALUE2 "find target","anub'rekhan").
-// Qualifier = the boss name.
+// Shape T7 "encounter_active": the universal raid condition. Active while a
+// named boss is engaged/found, optionally narrowed by:
+//   - role : only fire for bots of a role (comma-list, OR semantics):
+//            maintank|offtank|tank|notmaintank|nontank|ranged|melee|healer|dps|all
+//   - aura : phase gate on a boss aura by name (e.g. "locust swarm")
+//   - has  : 1 = require the aura present, 0 = require it absent (default 1)
+//
+// Evaluated per-bot, so the same rule string fans out to the right bots. This
+// one trigger shape expresses "who + when" for the whole JSON catalog.
+//
+// Qualifier formats (both accepted):
+//   "anub'rekhan"                                  (bare boss name; no filters)
+//   "boss=anub'rekhan|role=maintank|aura=locust swarm|has=1"   (kv form)
 class JsonEncounterActiveTrigger : public Trigger, public Qualified
 {
 public:
