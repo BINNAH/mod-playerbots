@@ -82,6 +82,8 @@ class CastRebirthAction : public ResurrectPartyMemberAction
 public:
     CastRebirthAction(PlayerbotAI* botAI) : ResurrectPartyMemberAction(botAI, "rebirth") {}
 
+    // Battle rez uses a tank-first target list, not the shared resurrect order.
+    std::string const GetTargetName() override { return "party member to battle rez"; }
     std::vector<NextAction> getPrerequisites() override;
     bool isUseful() override;
 };

@@ -109,8 +109,9 @@ std::vector<NextAction> CastReviveAction::getPrerequisites()
 
 std::vector<NextAction> CastRebirthAction::getPrerequisites()
 {
-    return NextAction::merge({ NextAction("caster form") },
-                             ResurrectPartyMemberAction::getPrerequisites());
+    // Reach the battle-rez target (tank-first), not the shared resurrect target.
+    return NextAction::merge({ NextAction("caster form"), NextAction("reach party member to battle rez") },
+                             Action::getPrerequisites());
 }
 
 bool CastRebirthAction::isUseful()

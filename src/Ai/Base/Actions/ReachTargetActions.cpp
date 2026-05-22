@@ -64,3 +64,10 @@ ReachPartyMemberToResurrectAction::ReachPartyMemberToResurrectAction(PlayerbotAI
 }
 
 std::string const ReachPartyMemberToResurrectAction::GetTargetName() { return "party member to resurrect"; }
+
+ReachPartyMemberToBattleRezAction::ReachPartyMemberToBattleRezAction(PlayerbotAI* botAI)
+    : ReachTargetAction(botAI, "reach party member to battle rez", botAI->GetRange("spell"))
+{
+}
+
+std::string const ReachPartyMemberToBattleRezAction::GetTargetName() { return "party member to battle rez"; }

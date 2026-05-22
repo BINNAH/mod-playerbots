@@ -69,4 +69,12 @@ public:
     std::string const GetTargetName() override;
 };
 
+class ReachPartyMemberToBattleRezAction : public ReachTargetAction
+{
+public:
+    ReachPartyMemberToBattleRezAction(PlayerbotAI* botAI);
+
+    std::string const GetTargetName() override;
+};
+
 #endif
