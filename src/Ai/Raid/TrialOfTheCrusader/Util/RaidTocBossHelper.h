@@ -31,19 +31,36 @@ constexpr float TOC_CENTER_Z = 393.837f;
 constexpr float TOC_FIRE_BOMB_AVOID_RADIUS = 8.0f;
 constexpr float TOC_FIRE_BOMB_FLEE_DISTANCE = 10.0f;
 constexpr float TOC_SNOBOLD_SEARCH_RADIUS = 80.0f;
-constexpr uint32 TOC_IMPALE_SWAP_STACKS = 3;   // don't bother swapping below this many stacks
-constexpr uint32 TOC_IMPALE_SWAP_LEAD = 2;     // ...and only when the active tank leads me by this much
-// Ranged/healers fan onto a ring — one unique, evenly spaced slot each — so
-// Snobold Fire Bombs (and the worms' sprays/frontal effects) can't chain off a
-// clump. Applies through Gormok and the worm phase.
-constexpr float TOC_SPREAD_RADIUS = 18.0f;
-constexpr float TOC_SPREAD_TOLERANCE = 4.0f;
+constexpr float TOC_SNOBBLED_REACH = 6.0f;     // snobbled player runs to within this of Gormok so all can hit the snobold
+constexpr uint32 TOC_IMPALE_SWAP_STACKS = 3;   // off-tank taunts once the active tank hits this many stacks
+                                               // (and only while the off-tank itself is at 0 stacks)
+constexpr uint32 TOC_IMPALE_BOP_STACKS = 8;    // pally-tank emergency: BoP-self to wipe the bleed at this many
+
+// Ranged/healers keep this far apart so Snobold Fire Bombs (and the worms'
+// sprays) can't chain. Spacing-based: a bot only steps out when it's actually
+// clumped, so spreading never fights fire-dodging or stops it from DPSing.
+constexpr float TOC_SPREAD_MIN_DIST = 8.0f;    // clumped if a fellow spreader is closer than this
+constexpr float TOC_SPREAD_PUSH_DIST = 11.0f;  // how far to step off when clumped
 
 // Acidmaw & Dreadscale. Slime Pools grow over their ~30s life, so react well
 // before the visual edge and clear it with margin (it was the #1 phase-2 damage).
 constexpr float TOC_SLIME_POOL_AVOID_RADIUS = 10.0f;
 constexpr float TOC_SLIME_POOL_FLEE_DISTANCE = 14.0f;
-constexpr float TOC_BILE_CURE_REACH = 4.0f;    // get this close to a Burning Bile carrier
+constexpr float TOC_BILE_CURE_REACH = 8.0f;    // toxin'd: only need to reach the 10y cure radius, not hug the carrier
+
+// Burning Bile is a 10y fire AoE around the afflicted player. Ranged/healers who
+// don't need curing keep clear of it (the #1 phase-2 damage source).
+constexpr float TOC_BILE_AVOID_RADIUS = 11.0f; // treat a Burning Bile carrier this close as dangerous
+constexpr float TOC_BILE_AVOID_FLEE = 13.0f;   // step out to here
+
+// Worm tank facing: each worm spews a frontal cone (Molten/Acid Spew) at its
+// tank. The tank stands on the far side of the worm from the raid so the cone
+// points away. Reposition only when the backline is in the worm's front
+// hemisphere (dot of facing vs raid-direction > this) — gives ~90deg of
+// hysteresis so the tank doesn't micro-dance.
+constexpr float TOC_WORM_FACE_DANGER_DOT = 0.0f;  // raid within 90deg of the worm's facing = dangerous
+constexpr float TOC_WORM_FACE_MELEE_GAP = 3.0f;   // stand this far past the worm's combat reach (stay in melee)
+constexpr float TOC_WORM_MELEE_RANGE = 8.0f;      // members within this of the worm count as "on it" (skipped for backline centroid)
 
 // Icehowl: clear at least this far off the charge lane (Trample radius is 12y).
 constexpr float TOC_ICEHOWL_CHARGE_CLEAR = 16.0f;
