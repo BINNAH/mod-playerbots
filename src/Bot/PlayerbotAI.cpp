@@ -198,6 +198,10 @@ PlayerbotAI::PlayerbotAI(Player* bot)
     botOutgoingPacketHandlers.AddHandler(SMSG_TEXT_EMOTE, "receive text emote");
     botOutgoingPacketHandlers.AddHandler(SMSG_EMOTE, "receive emote");
     botOutgoingPacketHandlers.AddHandler(SMSG_LOOT_START_ROLL, "master loot roll");
+    // React to rolls the moment they happen instead of polling: SMSG_LOOT_ROLL is broadcast
+    // to every group member each time someone votes, so a bot waiting on the human's NEED
+    // re-evaluates and casts its (deferred) vote as soon as the player decides.
+    botOutgoingPacketHandlers.AddHandler(SMSG_LOOT_ROLL, "loot roll");
     botOutgoingPacketHandlers.AddHandler(SMSG_ARENA_TEAM_INVITE, "arena team invite");
     botOutgoingPacketHandlers.AddHandler(SMSG_GROUP_DESTROYED, "group destroyed");
     botOutgoingPacketHandlers.AddHandler(SMSG_GROUP_LIST, "group list");

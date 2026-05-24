@@ -92,6 +92,41 @@ bool LootRollAction::Execute(Event /*event*/)
         else if (vote == GREED && !sPlayerbotAIConfig.lootGreedRollLevel)
             vote = PASS;
 
+        // Real players keep absolute NEED priority. If a bot would NEED an item, it holds its
+        // vote until every human in the roll has chosen, then steps down to GREED if any of them
+        // rolled NEED on it (so it never out-rolls the player on loot they personally claimed).
+        // Bots still NEED/GREED freely on anything no human needs. If a human never votes the
+        // roll just times out and the bot ends up passing -- an accepted trade-off.
+        if (vote == NEED)
+        {
+            bool waitingOnHuman = false;
+            bool humanNeeds = false;
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+            {
+                Player* member = ref->GetSource();
+                if (!member || GET_PLAYERBOT_AI(member))
+                    continue;  // only real players get priority
+
+                auto humanVoteItr = roll->playerVote.find(member->GetGUID());
+                if (humanVoteItr == roll->playerVote.end())
+                    continue;  // this human isn't eligible / not part of this roll
+
+                if (humanVoteItr->second == NOT_EMITED_YET)
+                {
+                    waitingOnHuman = true;  // human still deciding -- hold our vote
+                    break;
+                }
+                if (humanVoteItr->second == NEED)
+                    humanNeeds = true;
+            }
+
+            if (waitingOnHuman)
+                continue;  // re-check this roll on a later tick, once the human has chosen
+
+            if (humanNeeds)
+                vote = GREED;
+        }
+
         switch (group->GetLootMethod())
         {
             case MASTER_LOOT:

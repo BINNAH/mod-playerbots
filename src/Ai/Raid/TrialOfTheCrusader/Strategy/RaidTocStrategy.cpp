@@ -231,4 +231,22 @@ void RaidTocStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     triggers.push_back(new TriggerNode(
         "icehowl charge",
         { NextAction("icehowl dodge charge", ACTION_EMERGENCY + 3) }));
+
+    //
+    // Lord Jaraxxus
+    //
+    // Mages Spellsteal Nether Power off the boss whenever a stack is up — strips
+    // his +20% spell damage AND grants the mage a copy. Above the normal rotation
+    // (preempts a filler cast) but below survival, so a mage standing in Legion
+    // Flame dodges first. Self-limiting: CanCastSpell gates it to one cast per GCD
+    // and it goes quiet the instant the boss has no Nether Power left.
+    triggers.push_back(new TriggerNode(
+        "jaraxxus nether power",
+        { NextAction("jaraxxus steal nether power", ACTION_RAID + 2) }));
+
+    // Everyone steps out of Legion Flame ground-fire patches (the one real "don't
+    // stand in it" mechanic here). Emergency-tier, same as the Gormok fire bomb.
+    triggers.push_back(new TriggerNode(
+        "jaraxxus legion flame",
+        { NextAction("jaraxxus avoid legion flame", ACTION_EMERGENCY + 1) }));
 }

@@ -8,6 +8,9 @@
 #include "Playerbots.h"
 #include "World.h"
 
+// Center of XT-002's platform (the scrapbot pathing hub) — the off-tank holds
+// here with the raid and grabs Pummelers as they walk in from the corners.
+const Position ULDUAR_XT002_CENTER = Position(884.03f, -14.59f, 409.79f);
 const Position ULDUAR_KOLOGARN_SPREAD_POSITIONS[ULDUAR_KOLOGARN_SPREAD_POSITION_COUNT] = {
     Position(1770.0f,  12.0f, 449.0f, 0.0f),
     Position(1770.0f,   4.0f, 449.0f, 0.0f),

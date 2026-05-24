@@ -23,6 +23,8 @@ public:
         creators["worms tank face away"] = &RaidTocTriggerContext::worms_tank_face_away;
         creators["worms avoid burning bile"] = &RaidTocTriggerContext::worms_avoid_burning_bile;
         creators["icehowl charge"] = &RaidTocTriggerContext::icehowl_charge;
+        creators["jaraxxus nether power"] = &RaidTocTriggerContext::jaraxxus_nether_power;
+        creators["jaraxxus legion flame"] = &RaidTocTriggerContext::jaraxxus_legion_flame;
         creators["gormok impale self bop"] = &RaidTocTriggerContext::gormok_impale_self_bop;
         creators["gormok remove self bop"] = &RaidTocTriggerContext::gormok_remove_self_bop;
     }
@@ -42,6 +44,8 @@ private:
     static Trigger* worms_tank_face_away(PlayerbotAI* ai) { return new WormsTankFaceAwayTrigger(ai); }
     static Trigger* worms_avoid_burning_bile(PlayerbotAI* ai) { return new WormsAvoidBurningBileTrigger(ai); }
     static Trigger* icehowl_charge(PlayerbotAI* ai) { return new IcehowlChargeTrigger(ai); }
+    static Trigger* jaraxxus_nether_power(PlayerbotAI* ai) { return new JaraxxusNetherPowerTrigger(ai); }
+    static Trigger* jaraxxus_legion_flame(PlayerbotAI* ai) { return new JaraxxusLegionFlameTrigger(ai); }
     static Trigger* gormok_impale_self_bop(PlayerbotAI* ai) { return new GormokImpaleSelfBopTrigger(ai); }
     static Trigger* gormok_remove_self_bop(PlayerbotAI* ai) { return new GormokRemoveSelfBopTrigger(ai); }
 };

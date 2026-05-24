@@ -139,6 +139,26 @@ public:
     bool Execute(Event event) override;
 };
 
+// ---- Lord Jaraxxus ----
+
+// Mage casts Spellsteal on Jaraxxus to lift a stack of Nether Power.
+class JaraxxusStealNetherPowerAction : public Action
+{
+public:
+    JaraxxusStealNetherPowerAction(PlayerbotAI* ai)
+        : Action(ai, "jaraxxus steal nether power") {}
+    bool Execute(Event event) override;
+};
+
+// Step out of a Legion Flame ground-fire patch.
+class JaraxxusAvoidLegionFlameAction : public MovementAction
+{
+public:
+    JaraxxusAvoidLegionFlameAction(PlayerbotAI* ai)
+        : MovementAction(ai, "jaraxxus avoid legion flame") {}
+    bool Execute(Event event) override;
+};
+
 // ---- Gormok: paladin-tank emergency Impale clear ----
 
 // Cast Hand of Protection on self — the physical immunity strips the Impale bleed.

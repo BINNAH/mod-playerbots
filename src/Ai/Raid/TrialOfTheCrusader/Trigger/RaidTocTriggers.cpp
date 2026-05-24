@@ -369,6 +369,36 @@ bool IcehowlChargeTrigger::IsActive()
     return GetFirstAliveUnitByEntry(botAI, NPC_ICEHOWL) != nullptr;
 }
 
+bool JaraxxusNetherPowerTrigger::IsActive()
+{
+    // Mages only — Spellsteal is what lifts Nether Power (and grants the mage a
+    // copy). Other classes have no business reacting to this.
+    if (bot->getClass() != CLASS_MAGE)
+        return false;
+
+    Unit* boss = GetFirstAliveUnitByEntry(botAI, NPC_JARAXXUS);
+    if (!boss)
+        return false;
+
+    // Name lookup is difficulty-proof (Nether Power is 66228/67106/67107/67108).
+    if (!botAI->HasAura("nether power", boss))
+        return false;
+
+    // Let CanCastSpell gate range / line-of-sight / mana / the GCD, so this fires
+    // once per GCD while stacks remain and goes quiet the instant they're gone.
+    return botAI->CanCastSpell("spellsteal", boss);
+}
+
+bool JaraxxusLegionFlameTrigger::IsActive()
+{
+    Unit* boss = GetFirstAliveUnitByEntry(botAI, NPC_JARAXXUS);
+    if (!boss)
+        return false;
+
+    Creature* flame = bot->FindNearestCreature(NPC_LEGION_FLAME, TOC_LEGION_FLAME_AVOID_RADIUS);
+    return flame != nullptr;
+}
+
 bool GormokImpaleSelfBopTrigger::IsActive()
 {
     if (bot->getClass() != CLASS_PALADIN)

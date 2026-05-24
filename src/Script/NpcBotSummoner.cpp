@@ -37,7 +37,16 @@ namespace
 {
     constexpr uint32 BOTMASTER_ENTRY        = 600001;
     constexpr uint32 BOTMASTER_TEXT_ID      = 60002;
+    // Shop bot-picker uses a separate greeting ("...shop with?") so the summon
+    // page keeps its own "...summon?" wording. npc_text 60012 is seeded by
+    // mod-solo-raid-progression (2026_05_24_00_botmaster_shop_npc_text.sql).
+    constexpr uint32 BOTMASTER_SHOP_TEXT_ID = 60012;
     constexpr uint32 MAX_BOTS_SHOWN         = 24;
+
+    // Endgame emblems shown next to each summoned bot on the shop picker so the
+    // master can eyeball who's flush before drilling into their tokens.
+    constexpr uint32 EMBLEM_OF_TRIUMPH      = 47241;
+    constexpr uint32 EMBLEM_OF_FROST        = 49426;
 
     // Action ID space:
     //   GOSSIP_ACTION_INFO_DEF + <lowGuid>      -> summon that bot
@@ -267,6 +276,12 @@ namespace
                       << " (Lv " << uint32(bot->GetLevel()) << " "
                       << ClassName(bot->getClass()) << ")";
 
+                // Emblem balances, color-coded (Triumph gold, Frost light-blue)
+                // so the master can see who's flush before drilling in. Bots in
+                // this list are always summoned, so a live count is exact.
+                label << "  |cffffd100T:" << bot->GetItemCount(EMBLEM_OF_TRIUMPH, false) << "|r"
+                      << " |cff66ccffF:" << bot->GetItemCount(EMBLEM_OF_FROST, false) << "|r";
+
                 AddGossipItemFor(player, GOSSIP_ICON_VENDOR, label.str(),
                                  SENDER_SHOP_PICK_BOT, bot->GetGUID().GetCounter());
                 ++listed;
@@ -285,7 +300,7 @@ namespace
         AddGossipItemFor(player, GOSSIP_ICON_CHAT, "Nevermind.",
                          SENDER_SHOP_PICK_BOT, ACTION_CTRL_CLOSE);
 
-        SendGossipMenuFor(player, BOTMASTER_TEXT_ID, creature->GetGUID());
+        SendGossipMenuFor(player, BOTMASTER_SHOP_TEXT_ID, creature->GetGUID());
     }
 
     void ShowShopCurrencyPicker(Player* player, Creature* creature)

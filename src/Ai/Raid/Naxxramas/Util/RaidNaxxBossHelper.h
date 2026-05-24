@@ -1,7 +1,9 @@
 #ifndef _PLAYERBOT_RAIDNAXXBOSSHELPER_H
 #define _PLAYERBOT_RAIDNAXXBOSSHELPER_H
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 #include "AiObject.h"
 #include "AiObjectContext.h"
@@ -196,6 +198,18 @@ public:
     // doorway. Holding it here keeps Sapphiron off the entrance.
     const std::pair<float, float> mainTankPos = {3518.64f, -5252.45f};
     const std::pair<float, float> center = {3517.31f, -5253.74f};
+    // Where the boss actually hovers during the AIR phase: its spawn/home
+    // position (creature.guid 133932), ~18y NE of `center`. EVENT_FLIGHT_START
+    // flies Sapphiron home and it MoveIdle()s there, so the Frost Breath
+    // originates HERE — not at `center`, which is the GROUND tank spot. The
+    // explosion's LoS check (block.IsInBetween(boss, target, 2.0)) uses this
+    // real position, and the safe corridor behind a block is only ~2y wide, so
+    // the air-phase spread + "behind the block" geometry must be anchored here
+    // too. Anchoring on `center` lined bots up ~18y off-axis (worse the deeper
+    // they stood) and clipped the breath. It's a constant (not the live boss)
+    // to stay drift-free — the original code used `center` for exactly that
+    // stability, it just picked the wrong fixed point.
+    const std::pair<float, float> flightCenter = {3522.39f, -5236.78f};
     const float GENERIC_HEIGHT = 137.29f;
     SapphironBossHelper(PlayerbotAI* botAI) : AiObject(botAI) {}
     bool UpdateBossAI()
@@ -228,26 +242,183 @@ public:
 
         return getMSTime() - _last_land_ms <= POSITION_TIME_AFTER_LANDED;
     }
-    bool WaitForExplosion()
+    // True while `unit` is encased in an ice block (the Icebolt trigger aura).
+    // Encased players are the LOS shields the rest of the raid hides behind.
+    bool HasIcebolt(Unit* unit)
+    {
+        return NaxxSpellIds::HasAnyAura(botAI, unit, {NaxxSpellIds::Icebolt10, NaxxSpellIds::Icebolt25}) ||
+               botAI->HasAura("icebolt", unit, false, false, -1, true);
+    }
+    // How many players Sapphiron encases per air phase: RAID_MODE(2, 3) in
+    // boss_sapphiron.cpp. Bots wait for the whole set to form before picking a
+    // block, so they don't all dive on the first (often badly-placed) one.
+    uint32 ExpectedIceblockCount() const
+    {
+        return bot->GetRaidDifficulty() == RAID_DIFFICULTY_25MAN_NORMAL ? 3 : 2;
+    }
+    // The alive, encased group members = the ice blocks. Sorted by GUID so every
+    // bot computes the SAME ordering/assignment (no tick-to-tick flicker → no
+    // dance). Encased players are rooted, so these positions are stable for the
+    // whole air phase.
+    std::vector<Player*> GetIceblocks()
+    {
+        std::vector<Player*> blocks;
+        Group* group = bot->GetGroup();
+        if (!group)
+            return blocks;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* m = ref->GetSource();
+            if (m && m->IsAlive() && HasIcebolt(m))
+                blocks.push_back(m);
+        }
+        std::sort(blocks.begin(), blocks.end(),
+                  [](Player* a, Player* b) { return a->GetGUID() < b->GetGUID(); });
+        return blocks;
+    }
+    // Alive players in the raid (human + bots). Sapphiron can't encase more
+    // distinct players than are alive, so this caps how many blocks we can wait
+    // for in a depleted raid.
+    uint32 AliveRaidPlayerCount()
+    {
+        uint32 n = 0;
+        if (Group* group = bot->GetGroup())
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+                if (Player* m = ref->GetSource())
+                    if (m->IsAlive())
+                        ++n;
+        return n;
+    }
+    // Don't commit to a block until the full set of ice blocks has formed
+    // (waiting for 2-3 instead of running at the first one we see). Capped by
+    // the alive player count: in a depleted raid the boss physically can't
+    // encase the full set, so without the cap bots would wait forever for a
+    // block that can never form and eat the breath standing on the spread ring.
+    // Stateless on purpose — the flight action's helper never observes the
+    // ground phase between air phases, so any cross-phase timer kept here would
+    // go stale; the live block + alive counts are always correct.
+    bool ReadyToHideBehindIceblock()
     {
         if (!IsPhaseFlight())
             return false;
-
-        Group* group = bot->GetGroup();
-        if (!group)
+        size_t blocks = GetIceblocks().size();
+        if (blocks == 0)
             return false;
-
-        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        uint32 needed = std::min<uint32>(ExpectedIceblockCount(), AliveRaidPlayerCount());
+        return blocks >= needed;
+    }
+    // Fixed formation "home" for any group member, derived ONLY from its stable
+    // group-slot index — never its live position. Two radius layers + a per-slot
+    // angle fan bots out on a conservative arc centered on the proven NW ranged
+    // spot (0.85*PI). Used for the pre-air spread ring AND (critically) the
+    // iceblock assignment below, so the assignment is a pure function of fixed
+    // inputs and can't chase live movement. TUNABLE: widen the arc span to push
+    // the blocks further apart (mind the room walls / south entrance).
+    std::pair<float, float> SpreadHomePos(Player* m)
+    {
+        uint32 index = botAI->GetGroupSlotIndex(m);
+        float distance = (index % 2 == 0) ? 30.0f : 36.0f;
+        uint32 layer = index / 2;
+        float angle = 0.7f * M_PI + 0.03f * M_PI * layer;
+        // Centered on the flight-hover point so blocks form spread AROUND the
+        // boss and "behind the block" points cleanly radially outward.
+        return {flightCenter.first + std::cos(angle) * distance,
+                flightCenter.second + std::sin(angle) * distance};
+    }
+    std::pair<float, float> PreAirSpreadPos() { return SpreadHomePos(bot); }
+    // Block (from the GUID-sorted list) nearest to a fixed point, GUID tiebreak
+    // so it's deterministic when two are equidistant.
+    Player* NearestIceblockToPos(float x, float y, std::vector<Player*> const& blocks)
+    {
+        Player* best = nullptr;
+        float bestDist = 0.0f;
+        for (Player* b : blocks)
         {
-            Player* member = ref->GetSource();
-            if (member &&
-                (NaxxSpellIds::HasAnyAura(botAI, member, {NaxxSpellIds::Icebolt10, NaxxSpellIds::Icebolt25}) ||
-                 botAI->HasAura("icebolt", member, false, false, -1, true)))
+            float d = b->GetExactDist2d(x, y);
+            if (!best || d < bestDist || (d == bestDist && b->GetGUID() < best->GetGUID()))
             {
-                return true;
+                best = b;
+                bestDist = d;
             }
         }
-        return false;
+        return best;
+    }
+    // Which block a member hides behind: the one nearest its FIXED formation
+    // home. Because both the home and the (rooted) block positions are constant
+    // for the whole air phase, every bot computes the same assignment for every
+    // member — so nobody's target depends on where anyone currently is.
+    Player* AssignedIceblock(Player* m, std::vector<Player*> const& blocks)
+    {
+        std::pair<float, float> home = SpreadHomePos(m);
+        return NearestIceblockToPos(home.first, home.second, blocks);
+    }
+    // Where THIS bot should stand to break LOS for the frost breath. Each bot
+    // hides behind its assigned (nearest-to-home) block; bots sharing a block
+    // tile the safe lane at staggered depths/columns instead of stacking on the
+    // single point behind it — that pile-up is why "the close block" left people
+    // exposed. The safe corridor is only ~2y wide and 10y deep, so depth stays
+    // <=7y and lateral offsets stay small. EVERY input here is fixed for the air
+    // phase (assignment + slot use formation homes and GUIDs, not live positions;
+    // the boss anchor is the constant flightCenter), so the destination is
+    // constant: the bot paths to it once and parks — no tick-to-tick dance.
+    bool GetIceblockHidePos(std::vector<float>& dest)
+    {
+        std::vector<Player*> blocks = GetIceblocks();
+        if (blocks.empty())
+            return false;
+
+        Player* myBlock = AssignedIceblock(bot, blocks);
+        if (!myBlock)
+            return false;
+
+        // Slot = rank among the bot-hiders assigned to the SAME block, ordered
+        // by GUID. Real players self-manage and are skipped — bots only
+        // coordinate slots among themselves (the human is never required).
+        uint32 slot = 0;
+        if (Group* group = bot->GetGroup())
+        {
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+            {
+                Player* m = ref->GetSource();
+                if (!m || m == bot || !m->IsAlive())
+                    continue;
+                if (!GET_PLAYERBOT_AI(m))  // human picks its own block
+                    continue;
+                if (HasIcebolt(m))  // encased bots are blocks, not hiders
+                    continue;
+                if (AssignedIceblock(m, blocks) == myBlock && m->GetGUID() < bot->GetGUID())
+                    ++slot;
+            }
+        }
+
+        // "Behind the block" = directly away from the boss's real hover point,
+        // so the block sits on the boss->bot line (perp distance ~0). This is
+        // the LoS axis the explosion checks; using `center` here put bots ~18y
+        // off-axis. Perp error is ~0 on this axis regardless of depth, so depth
+        // is "free" — only the lateral column costs perp tolerance, kept small.
+        float ang = std::atan2(myBlock->GetPositionY() - flightCenter.second,
+                               myBlock->GetPositionX() - flightCenter.first);
+        uint32 row = slot % 3;  // depth row behind the block: 3 / 5 / 7y (<<10y)
+        uint32 col = slot / 3;  // sideways column within the ~2y-wide safe lane
+        float depth = 3.0f + row * 2.0f;
+        int colSign = (col % 2 == 0) ? 1 : -1;
+        float lateral = float((col + 1) / 2) * 1.2f * colSign;  // 0, +1.2, -1.2, ...
+        float px = myBlock->GetPositionX() + std::cos(ang) * depth - std::sin(ang) * lateral;
+        float py = myBlock->GetPositionY() + std::sin(ang) * depth + std::cos(ang) * lateral;
+        dest = {px, py, GENERIC_HEIGHT};
+        return true;
+    }
+    // True in the brief window after EVENT_FLIGHT_START but before liftoff: the
+    // boss has gone passive and is gliding to center, not yet flying. Gives bots
+    // a head start on backing up + spreading. Excludes the equally-passive
+    // post-landing settle window (JustLanded) so we don't yank bots back out
+    // right after they land.
+    bool IsPreAirPhase()
+    {
+        if (!IsPhaseGround() || !_unit || JustLanded())
+            return false;
+        Creature* c = _unit->ToCreature();
+        return c && c->GetReactState() == REACT_PASSIVE;
     }
     bool FindPosToAvoidChill(std::vector<float>& dest)
     {

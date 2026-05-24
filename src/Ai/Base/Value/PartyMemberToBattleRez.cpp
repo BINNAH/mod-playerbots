@@ -55,6 +55,7 @@ Unit* PartyMemberToBattleRez::Calculate()
     std::vector<Player*> mainTanks;
     std::vector<Player*> offTanks;
     std::vector<Player*> otherTanks;
+    std::vector<Player*> healers;
     std::vector<Player*> druids;
 
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
@@ -75,12 +76,14 @@ Unit* PartyMemberToBattleRez::Calculate()
             offTanks.push_back(member);
         else if (botAI->IsTank(member))
             otherTanks.push_back(member);
+        else if (botAI->IsHeal(member))
+            healers.push_back(member);  // resto druids land here too, ahead of the druid bucket
         else if (DruidHasRebirthReady(member))
             druids.push_back(member);
-        // Everything else (DPS, healers, CD-down druids) is intentionally skipped.
+        // Everything else (DPS, CD-down non-healer druids) is intentionally skipped.
     }
 
-    std::vector<std::vector<Player*>*> lists = {&mainTanks, &offTanks, &otherTanks, &druids};
+    std::vector<std::vector<Player*>*> lists = {&mainTanks, &offTanks, &otherTanks, &healers, &druids};
     for (std::vector<Player*>* list : lists)
         for (Player* candidate : *list)
             if (Check(candidate))  // map / range / LOS / not-GM gate from PartyMemberValue

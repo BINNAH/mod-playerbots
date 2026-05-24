@@ -172,17 +172,26 @@ float SapphironGenericMultiplier::GetValue(Action* action)
     if (dynamic_cast<CastDeathGripAction*>(action) || dynamic_cast<CombatFormationMoveAction*>(action))
         return 0.0f;
 
-    // Flight phase: bots must sit still behind their iceblock until the
-    // frost-breath explosion resolves. Any of these would yank them off
-    // the block — assist actions chase the (untargetable) flying boss,
-    // flee/debuff pick fresh destinations every tick — and the resulting
-    // tug-of-war with the iceblock positioning action shows up as the
-    // back-and-forth dance behind the block.
-    if (helper.IsPhaseFlight() &&
-        (dynamic_cast<DpsAssistAction*>(action) || dynamic_cast<TankAssistAction*>(action) ||
-         dynamic_cast<FleeAction*>(action) || dynamic_cast<CastDebuffSpellOnAttackerAction*>(action)))
+    // Air phase + the pre-liftoff window: the ONLY movement a bot may do is our
+    // own hide/spread positioning. Zero EVERY other movement action — above all
+    // `follow` (drags bots toward the master) and reach-melee / reach-spell (the
+    // chase that looks like "attacking the flying boss") — plus the assist /
+    // debuff actions that retarget and re-trigger that chase. Before this,
+    // whenever the positioning action parked (returned false) one of these fired
+    // and pulled the bot off its iceblock, so it re-hid next tick: that
+    // tug-of-war was the back-and-forth pacing, and the bot was out in the open,
+    // away from cover, exactly when the frost breath landed.
+    if (helper.IsPhaseFlight() || helper.IsPreAirPhase())
     {
-        return 0.0f;
+        bool ours = dynamic_cast<SapphironFlightPositionAction*>(action) ||
+                    dynamic_cast<SapphironGroundPositionAction*>(action);
+        if (!ours && (dynamic_cast<MovementAction*>(action) ||      // follow, reach melee/spell, flee, ...
+                      dynamic_cast<DpsAssistAction*>(action) ||
+                      dynamic_cast<TankAssistAction*>(action) ||
+                      dynamic_cast<CastDebuffSpellOnAttackerAction*>(action)))
+        {
+            return 0.0f;
+        }
     }
 
     return 1.0f;

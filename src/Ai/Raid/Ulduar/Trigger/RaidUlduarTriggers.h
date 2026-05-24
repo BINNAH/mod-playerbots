@@ -496,4 +496,14 @@ public:
     bool IsActive() override;
 };
 
+//
+// Ignis the Furnace Master
+//
+class IgnisFocusBossTrigger : public Trigger
+{
+public:
+    IgnisFocusBossTrigger(PlayerbotAI* ai) : Trigger(ai, "ignis focus boss trigger") {}
+    bool IsActive() override;
+};
+
 #endif

@@ -14,10 +14,10 @@ class Unit;
 // Target value used by the druid Rebirth (battle rez) action only. Unlike the
 // shared "party member to resurrect" value (master -> healer -> tank -> other),
 // this prioritises keeping the raid standing during combat:
-//   main tank -> off/assist tank -> any other tank -> rez-capable druids.
-// DPS and healers are intentionally NOT eligible, so a precious combat rez is
-// never spent on them. Dead druids are only considered when their own Rebirth
-// is off cooldown, so rezzing them actually restores battle-rez capacity.
+//   main tank -> off/assist tank -> any other tank -> healers -> rez-capable druids.
+// DPS are intentionally NOT eligible, so a precious combat rez is never spent on
+// them. Dead non-healer druids are only considered when their own Rebirth is off
+// cooldown, so rezzing them actually restores battle-rez capacity.
 class PartyMemberToBattleRez : public PartyMemberValue
 {
 public:

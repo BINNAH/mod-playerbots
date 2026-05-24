@@ -198,10 +198,26 @@ bool HeiganDanceAction::Execute(Event /*event*/)
     float x = kSafeSpotsXY[section * 2];
     float y = kSafeSpotsXY[section * 2 + 1];
 
-    // Already in the right wedge — hand control back so DPS / threat /
-    // healing rotations run.
+    // Already in the right wedge.
     if (bot->IsWithinDist2d(x, y, kInPositionTolerance))
+    {
+        // Fast phase (4s cadence): hold the tick instead of handing back. If we
+        // hand back here, a ranged bot fires reach-spell/a nuke, and a started
+        // cast parks its AI (nextCheckDelay = castTime + reactDelay) past the
+        // next eruption — this action can't re-enter to slide it, so it eats the
+        // wave mid-cast and dies (Krystal/Trinarah/Luumis, Naxx run 2026-05-22).
+        // Holding costs zero DPS: Heigan is teleported to center and unattackable
+        // for the whole fast phase, so nobody can cast on him anyway. Interrupt
+        // any cast carried in from the slow phase as we cross the boundary.
+        if (fast_phase)
+        {
+            botAI->InterruptSpell();
+            return true;
+        }
+        // Slow phase (10s cadence): hand control back so DPS / threat / healing
+        // rotations run — there's ample time to cast and still dance.
         return false;
+    }
 
     botAI->InterruptSpell();
     MoveTo(bot->GetMapId(), x, y, kSafeSpotZ, false, false, false, false,

@@ -532,4 +532,14 @@ public:
     bool Execute(Event event) override;
 };
 
+//
+// Ignis the Furnace Master
+//
+class IgnisFocusBossAction : public AttackAction
+{
+public:
+    IgnisFocusBossAction(PlayerbotAI* botAI) : AttackAction(botAI, "ignis focus boss action") {}
+    bool Execute(Event event) override;
+};
+
 #endif

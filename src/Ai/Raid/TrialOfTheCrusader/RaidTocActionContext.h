@@ -24,6 +24,8 @@ public:
         creators["worms tank face away"] = &RaidTocActionContext::worms_tank_face_away;
         creators["worms avoid burning bile"] = &RaidTocActionContext::worms_avoid_burning_bile;
         creators["icehowl dodge charge"] = &RaidTocActionContext::icehowl_dodge_charge;
+        creators["jaraxxus steal nether power"] = &RaidTocActionContext::jaraxxus_steal_nether_power;
+        creators["jaraxxus avoid legion flame"] = &RaidTocActionContext::jaraxxus_avoid_legion_flame;
         creators["gormok self bop clear impale"] = &RaidTocActionContext::gormok_self_bop_clear_impale;
         creators["gormok remove self bop"] = &RaidTocActionContext::gormok_remove_self_bop;
     }
@@ -43,6 +45,8 @@ private:
     static Action* worms_tank_face_away(PlayerbotAI* ai) { return new WormsTankFaceAwayAction(ai); }
     static Action* worms_avoid_burning_bile(PlayerbotAI* ai) { return new WormsAvoidBurningBileAction(ai); }
     static Action* icehowl_dodge_charge(PlayerbotAI* ai) { return new IcehowlDodgeChargeAction(ai); }
+    static Action* jaraxxus_steal_nether_power(PlayerbotAI* ai) { return new JaraxxusStealNetherPowerAction(ai); }
+    static Action* jaraxxus_avoid_legion_flame(PlayerbotAI* ai) { return new JaraxxusAvoidLegionFlameAction(ai); }
     static Action* gormok_self_bop_clear_impale(PlayerbotAI* ai) { return new GormokSelfBopClearImpaleAction(ai); }
     static Action* gormok_remove_self_bop(PlayerbotAI* ai) { return new GormokRemoveSelfBopAction(ai); }
 };

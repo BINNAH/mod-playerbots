@@ -123,6 +123,25 @@ public:
     bool IsActive() override;
 };
 
+// ---- Lord Jaraxxus ----
+
+// I'm a mage and Jaraxxus currently has Nether Power up — Spellsteal a stack
+// (strips his +20% spell damage and hands me a copy of the buff).
+class JaraxxusNetherPowerTrigger : public Trigger
+{
+public:
+    JaraxxusNetherPowerTrigger(PlayerbotAI* ai) : Trigger(ai, "jaraxxus nether power") {}
+    bool IsActive() override;
+};
+
+// A Legion Flame ground-fire patch is too close — step out of it.
+class JaraxxusLegionFlameTrigger : public Trigger
+{
+public:
+    JaraxxusLegionFlameTrigger(PlayerbotAI* ai) : Trigger(ai, "jaraxxus legion flame") {}
+    bool IsActive() override;
+};
+
 // ---- Gormok: paladin-tank emergency Impale clear ----
 
 // Paladin tank with a dangerous Impale stack should BoP itself to wipe the bleed.

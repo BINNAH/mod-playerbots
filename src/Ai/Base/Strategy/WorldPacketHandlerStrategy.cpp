@@ -61,13 +61,18 @@ void WorldPacketHandlerStrategy::InitTriggers(std::vector<TriggerNode*>& trigger
     triggers.push_back(new TriggerNode("see spell", { NextAction("see spell", relevance) }));
     triggers.push_back(new TriggerNode("release spirit", { NextAction("release", relevance) }));
     triggers.push_back(new TriggerNode("revive from corpse", { NextAction("revive from corpse", relevance) }));
-    triggers.push_back(new TriggerNode("master loot roll", { NextAction("master loot roll", relevance) }));
+    // "master loot roll" action is gated off for player-mastered bots, so also kick the
+    // poll-style "loot roll" action on roll start to evaluate the new roll immediately.
+    triggers.push_back(new TriggerNode("master loot roll", { NextAction("master loot roll", relevance),
+                                                             NextAction("loot roll", relevance) }));
 
     // quest ?
     //triggers.push_back(new TriggerNode("quest confirm", { NextAction("quest confirm", relevance) }));
     triggers.push_back(new TriggerNode("questgiver quest details", { NextAction("turn in query quest", relevance) }));
 
-    // loot roll
+    // loot roll: event-driven off SMSG_LOOT_ROLL (someone voted) for instant reaction, with
+    // the "very often" poll kept as a slow backstop in case a roll packet is ever missed.
+    triggers.push_back(new TriggerNode("loot roll", { NextAction("loot roll", relevance) }));
     triggers.push_back(new TriggerNode("very often", { NextAction("loot roll", relevance) }));
 }
 

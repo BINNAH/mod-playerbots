@@ -13,6 +13,9 @@ enum TocIDs
     NPC_ICEHOWL            = 34797,
     NPC_SLIME_POOL         = 35176,
 
+    NPC_JARAXXUS           = 34780,
+    NPC_LEGION_FLAME       = 34784, // persistent ground-fire trail dropped under the Legion Flame target
+
     SPELL_FIRE_BOMB        = 66313,
     SPELL_FIRE_BOMB_AURA   = 66318,
     SPELL_SNOBOLLED        = 66406,
@@ -20,6 +23,13 @@ enum TocIDs
     SPELL_PARALYTIC_TOXIN  = 66823, // Acidmaw debuff: ramps to full paralysis (25N)
     SPELL_BURNING_BILE     = 66870, // Dreadscale debuff: neutralizes Paralytic Toxin
     SPELL_SURGE_OF_ADRENALINE = 68667, // Icehowl: granted the instant the charge starts (25N)
+
+    // Lord Jaraxxus. Nether Power is a self-buff stacking +20% spell damage that
+    // a mage's Spellsteal strips one stack at a time (and grants the mage its own
+    // copy — the core handles that in boss_lord_jaraxxus.cpp SpellHit). Detected by
+    // NAME because it uses per-difficulty ids (66228 / 67106 / 67107 / 67108).
+    SPELL_NETHER_POWER     = 66228,
+    SPELL_SPELLSTEAL       = 30449, // mage Spellsteal (cast by name "spellsteal")
 };
 
 // Arena centre = Locs[LOC_CENTER] in core trial_of_the_crusader.h
@@ -64,6 +74,12 @@ constexpr float TOC_WORM_MELEE_RANGE = 8.0f;      // members within this of the 
 
 // Icehowl: clear at least this far off the charge lane (Trample radius is 12y).
 constexpr float TOC_ICEHOWL_CHARGE_CLEAR = 16.0f;
+
+// Lord Jaraxxus. Legion Flame drops a trail of persistent ground-fire NPCs under
+// its target; everyone steps out of any patch that gets close. React a touch
+// before the visual edge and clear it with margin (matches the fire-bomb dodge).
+constexpr float TOC_LEGION_FLAME_AVOID_RADIUS = 7.0f;
+constexpr float TOC_LEGION_FLAME_FLEE_DISTANCE = 12.0f;
 
 // 2*pi without pulling in <cmath>/M_PI at header scope.
 constexpr float TOC_TWO_PI = 6.2831853071795862f;

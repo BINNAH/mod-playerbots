@@ -167,7 +167,16 @@ constexpr float ULDUAR_YOGG_SARON_ICECROWN_CITADEL_RADIUS = 150.0f;
 constexpr float ULDUAR_YOGG_SARON_CHAMBER_OF_ASPECTS_RADIUS = 150.0f;
 constexpr float ULDUAR_YOGG_SARON_BRAIN_ROOM_RADIUS = 50.0f;
 
+// XT-002 Deconstructor: the off-tank holds the raid's center and grabs
+// Pummelers as they walk in, instead of chasing them out to their corner
+// spawn piles (~80y away). ENGAGE_RADIUS is how close to the center a Pummeler
+// must get before we commit to it; CENTER_TOLERANCE is how far we let the
+// off-tank drift before re-centering while waiting for one to arrive.
+constexpr float ULDUAR_XT002_PUMMELER_ENGAGE_RADIUS = 30.0f;
+constexpr float ULDUAR_XT002_CENTER_TOLERANCE = 8.0f;
+
 extern const Position ULDUAR_KOLOGARN_SPREAD_POSITIONS[ULDUAR_KOLOGARN_SPREAD_POSITION_COUNT];
+extern const Position ULDUAR_XT002_CENTER;
 extern const Position ULDUAR_THORIM_NEAR_ARENA_CENTER;
 extern const Position ULDUAR_THORIM_NEAR_ENTRANCE_POSITION;
 extern const Position ULDUAR_THORIM_GAUNTLET_LEFT_SIDE_6_YARDS_1;

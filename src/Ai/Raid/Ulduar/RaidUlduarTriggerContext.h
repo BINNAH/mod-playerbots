@@ -29,6 +29,7 @@ public:
         creators["xt002 offtank pickup pummeler"] = &RaidUlduarTriggerContext::xt002_offtank_pickup_pummeler;
         creators["xt002 main tank attack boss"] = &RaidUlduarTriggerContext::xt002_main_tank_attack_boss;
         creators["ignis fire resistance trigger"] = &RaidUlduarTriggerContext::ignis_fire_resistance_trigger;
+        creators["ignis focus boss trigger"] = &RaidUlduarTriggerContext::ignis_focus_boss_trigger;
         creators["iron assembly lightning tendrils trigger"] = &RaidUlduarTriggerContext::iron_assembly_lightning_tendrils_trigger;
         creators["iron assembly overload trigger"] = &RaidUlduarTriggerContext::iron_assembly_overload_trigger;
         creators["iron assembly rune of power trigger"] = &RaidUlduarTriggerContext::iron_assembly_rune_of_power_trigger;
@@ -105,6 +106,7 @@ private:
     static Trigger* xt002_offtank_pickup_pummeler(PlayerbotAI* ai) { return new XT002OffTankPickupPummelerTrigger(ai); }
     static Trigger* xt002_main_tank_attack_boss(PlayerbotAI* ai) { return new XT002MainTankAttackBossTrigger(ai); }
     static Trigger* ignis_fire_resistance_trigger(PlayerbotAI* ai) { return new BossFireResistanceTrigger(ai, "ignis the furnace master"); }
+    static Trigger* ignis_focus_boss_trigger(PlayerbotAI* ai) { return new IgnisFocusBossTrigger(ai); }
     static Trigger* iron_assembly_lightning_tendrils_trigger(PlayerbotAI* ai) { return new IronAssemblyLightningTendrilsTrigger(ai); }
     static Trigger* iron_assembly_overload_trigger(PlayerbotAI* ai) { return new IronAssemblyOverloadTrigger(ai); }
     static Trigger* iron_assembly_rune_of_power_trigger(PlayerbotAI* ai) { return new IronAssemblyRuneOfPowerTrigger(ai); }

@@ -70,6 +70,14 @@ void RaidUlduarStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         "ignis fire resistance trigger",
         { NextAction("ignis fire resistance action", ACTION_RAID) }));
 
+    // Focus the boss, ignore the Iron Constructs: tanks + DPS funnel onto
+    // Ignis. Pitched like a normal attack (above default target selection) so
+    // bots don't peel to adds; it yields the instant the bot is already on
+    // Ignis, so the rotation and the fire-resistance utility still run.
+    triggers.push_back(new TriggerNode(
+        "ignis focus boss trigger",
+        { NextAction("ignis focus boss action", ACTION_RAID + 1) }));
+
     //
     // Iron Assembly
     //

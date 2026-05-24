@@ -251,7 +251,6 @@ public:
 
 protected:
     SapphironBossHelper helper;
-    bool MoveToNearestIcebolt();
 };
 
 // class SapphironAvoidChillAction : public MovementAction

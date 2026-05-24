@@ -3050,10 +3050,47 @@ bool XT002MoveAwayFromGroupAction::Execute(Event /*event*/)
 
 bool XT002OffTankPickupPummelerAction::Execute(Event event)
 {
-    Unit* pummeler = GetFirstAliveUnitByEntry(botAI, NPC_XM024_PUMMELLER);
+    // XT-002 is tanked in the middle of the platform while Pummelers spawn out
+    // at the corner energy piles (~80y away) and then walk in toward a random
+    // raid member. Instead of sprinting out to a corner to grab one, the
+    // off-tank holds the center with the raid and taunts Pummelers as they
+    // arrive, keeping their cleave/Trample on him and next to the group.
+
+    // Grab the Pummeler nearest the raid center: that's the next one to reach
+    // us, and it stops us fixating on a far one that just spawned.
+    GuidVector npcs = AI_VALUE(GuidVector, "possible targets no los");
+    Unit* pummeler = nullptr;
+    float closestDistanceSq = std::numeric_limits<float>::max();
+    for (auto const& guid : npcs)
+    {
+        Unit* unit = botAI->GetUnit(guid);
+        if (!unit || !unit->IsAlive() || unit->GetEntry() != NPC_XM024_PUMMELLER)
+            continue;
+
+        float distanceSq = unit->GetExactDist2dSq(ULDUAR_XT002_CENTER);
+        if (distanceSq < closestDistanceSq)
+        {
+            closestDistanceSq = distanceSq;
+            pummeler = unit;
+        }
+    }
+
     if (!pummeler)
         return false;
 
+    // If the nearest Pummeler hasn't reached the raid yet, hold the center and
+    // let it come to us rather than chasing it back to its spawn corner.
+    if (closestDistanceSq >
+        ULDUAR_XT002_PUMMELER_ENGAGE_RADIUS * ULDUAR_XT002_PUMMELER_ENGAGE_RADIUS)
+    {
+        if (bot->GetExactDist2d(ULDUAR_XT002_CENTER) > ULDUAR_XT002_CENTER_TOLERANCE)
+            return MoveTo(ULDUAR_MAP_ID, ULDUAR_XT002_CENTER.GetPositionX(),
+                          ULDUAR_XT002_CENTER.GetPositionY(),
+                          ULDUAR_XT002_CENTER.GetPositionZ());
+        return false;
+    }
+
+    // Pummeler is in on the raid now — pick it up.
     if (bot->GetVictim() != pummeler)
         return Attack(pummeler);
 
@@ -3073,6 +3110,24 @@ bool XT002MainTankAttackBossAction::Execute(Event event)
         return Attack(boss);
 
     if (boss->GetVictim() != bot)
+        return botAI->DoSpecificAction("taunt spell", event, true);
+
+    return false;
+}
+
+bool IgnisFocusBossAction::Execute(Event event)
+{
+    Unit* boss = AI_VALUE2(Unit*, "find target", "ignis the furnace master");
+    if (!boss)
+        return false;
+
+    // Snap onto Ignis if we've drifted onto an Iron Construct (or nothing).
+    if (bot->GetVictim() != boss)
+        return Attack(boss);
+
+    // Only the main tank holds the boss; off-tank and DPS just stay on him.
+    // Once we're already on Ignis, yield so the normal combat rotation runs.
+    if (PlayerbotAI::IsMainTank(bot) && boss->GetVictim() != bot)
         return botAI->DoSpecificAction("taunt spell", event, true);
 
     return false;

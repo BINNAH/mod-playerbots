@@ -2185,3 +2185,14 @@ bool XT002MainTankAttackBossTrigger::IsActive()
     return PlayerbotAI::IsMainTank(bot) &&
            AI_VALUE2(Unit*, "find target", "xt-002 deconstructor");
 }
+
+bool IgnisFocusBossTrigger::IsActive()
+{
+    // Strat: everyone burns Ignis directly and ignores the Iron Constructs.
+    // Healers keep healing (the action below never fires for them); tanks and
+    // DPS funnel onto the boss. Active for the whole fight — the action yields
+    // once the bot is already on Ignis, so normal rotation runs underneath.
+    if (PlayerbotAI::IsHeal(bot))
+        return false;
+    return AI_VALUE2(Unit*, "find target", "ignis the furnace master") != nullptr;
+}

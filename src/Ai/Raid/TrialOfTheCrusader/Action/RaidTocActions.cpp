@@ -318,6 +318,29 @@ bool IcehowlDodgeChargeAction::Execute(Event /*event*/)
                   MovementPriority::MOVEMENT_COMBAT, true);
 }
 
+bool JaraxxusStealNetherPowerAction::Execute(Event /*event*/)
+{
+    Unit* boss = GetFirstAliveUnitByEntry(botAI, NPC_JARAXXUS);
+    if (!boss)
+        return false;
+
+    // Only worth a GCD if a stack is actually up (the trigger already checks, but
+    // a tick can pass between the two — re-check so we never waste the cast).
+    if (!botAI->HasAura("nether power", boss))
+        return false;
+
+    return botAI->CastSpell("spellsteal", boss);
+}
+
+bool JaraxxusAvoidLegionFlameAction::Execute(Event /*event*/)
+{
+    Creature* flame = bot->FindNearestCreature(NPC_LEGION_FLAME, TOC_LEGION_FLAME_AVOID_RADIUS);
+    if (!flame)
+        return false;
+
+    return FleePosition(flame->GetPosition(), TOC_LEGION_FLAME_FLEE_DISTANCE);
+}
+
 bool GormokSelfBopClearImpaleAction::Execute(Event /*event*/)
 {
     // Hand of Protection grants physical immunity, which strips the Impale bleed.

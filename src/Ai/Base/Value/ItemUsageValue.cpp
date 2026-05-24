@@ -162,6 +162,56 @@ ItemUsage ItemUsageValue::Calculate()
     return ITEM_USAGE_NONE;
 }
 
+// The armor "weight" subclass a class should be wearing at a given level (the type the
+// class trains into and gets bonuses for). Returns -1 if there's no single main type.
+// Stat fit (caster vs melee plate, holy vs ret, etc.) is deliberately NOT judged here --
+// that's the spec-aware StatsWeightCalculator's job. This only stops cross-armor-type rolls
+// (a plate class needing cloth), never blocks a class from its own armor type.
+static int32 MainArmorSubclassFor(uint8 clazz, uint32 level)
+{
+    switch (clazz)
+    {
+        case CLASS_WARRIOR:
+        case CLASS_PALADIN:
+        case CLASS_DEATH_KNIGHT:
+            return level >= 40 ? ITEM_SUBCLASS_ARMOR_PLATE : ITEM_SUBCLASS_ARMOR_MAIL;
+        case CLASS_HUNTER:
+        case CLASS_SHAMAN:
+            return level >= 40 ? ITEM_SUBCLASS_ARMOR_MAIL : ITEM_SUBCLASS_ARMOR_LEATHER;
+        case CLASS_DRUID:
+        case CLASS_ROGUE:
+            return ITEM_SUBCLASS_ARMOR_LEATHER;
+        case CLASS_PRIEST:
+        case CLASS_MAGE:
+        case CLASS_WARLOCK:
+            return ITEM_SUBCLASS_ARMOR_CLOTH;
+    }
+    return -1;
+}
+
+// True if the item carries a dedicated tanking/mitigation stat. Used to keep tank-role bots
+// from rolling NEED on pure-DPS armor of their own type (e.g. a bear grabbing an agility/AP
+// leather chest). Pieces without any of these fall through to a GREED roll instead.
+static bool HasTankMitigationStat(ItemTemplate const* proto)
+{
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_STATS; ++i)
+    {
+        if (!proto->ItemStat[i].ItemStatValue)
+            continue;
+
+        switch (proto->ItemStat[i].ItemStatType)
+        {
+            case ITEM_MOD_DEFENSE_SKILL_RATING:
+            case ITEM_MOD_DODGE_RATING:
+            case ITEM_MOD_PARRY_RATING:
+            case ITEM_MOD_BLOCK_RATING:
+            case ITEM_MOD_BLOCK_VALUE:
+                return true;
+        }
+    }
+    return false;
+}
+
 ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, int32 randomPropertyId)
 {
     if (bot->BotCanUseItem(itemProto) != EQUIP_ERR_OK)
@@ -169,6 +219,35 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
 
     if (itemProto->InventoryType == INVTYPE_NON_EQUIP)
         return ITEM_USAGE_NONE;
+
+    // Armor-type gate: never treat body armor of the wrong weight class as an upgrade, so a
+    // plate class doesn't roll on cloth, etc. We only check the WEIGHT TYPE (cloth/leather/
+    // mail/plate) here -- whether the stats actually suit the bot's spec is left to the
+    // StatsWeightCalculator below, which is spec-aware (a holy paladin values its spellpower
+    // plate; a fury warrior won't). Cloaks carry the cloth subclass but are usable by every
+    // class, so they're exempt. Other slots (rings/trinkets/necks = misc subclass, shields,
+    // relics) aren't in the weight set, so they're left to normal scoring too. Returning NONE
+    // lets Calculate() fall through to vendor/DE handling -> a GREED roll, so a wrong-type bot
+    // can still win it if nobody NEEDs, but always loses to a class whose spec wants the type.
+    if (itemProto->Class == ITEM_CLASS_ARMOR &&
+        itemProto->InventoryType != INVTYPE_CLOAK &&
+        (itemProto->SubClass == ITEM_SUBCLASS_ARMOR_CLOTH ||
+         itemProto->SubClass == ITEM_SUBCLASS_ARMOR_LEATHER ||
+         itemProto->SubClass == ITEM_SUBCLASS_ARMOR_MAIL ||
+         itemProto->SubClass == ITEM_SUBCLASS_ARMOR_PLATE))
+    {
+        int32 const mainType = MainArmorSubclassFor(bot->getClass(), bot->GetLevel());
+        if (mainType >= 0 && itemProto->SubClass != (uint32)mainType)
+            return ITEM_USAGE_NONE;
+
+        // Tank role: only treat dedicated tank pieces (carrying a mitigation stat) as upgrades,
+        // so a tank doesn't NEED pure-DPS armor of its own type. This is intentionally a role +
+        // stat rule, not a spec-weight one -- a bear's stamina/agility weights rate a DPS leather
+        // chest as a huge upgrade, which is why scoring alone won't stop it. Non-mitigation pieces
+        // fall through to a GREED roll, handing them to DPS who actually want them.
+        if (PlayerbotAI::IsTank(bot) && !HasTankMitigationStat(itemProto))
+            return ITEM_USAGE_NONE;
+    }
 
     Item* pItem = Item::CreateItem(itemProto->ItemId, 1, bot, false, 0, true);
     if (!pItem)
