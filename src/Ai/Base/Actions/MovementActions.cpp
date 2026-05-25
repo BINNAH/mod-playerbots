@@ -184,6 +184,12 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
         return false;
     }
 
+    // Tank facing: when a tank in combat repositions to a spot in the rear
+    // hemisphere relative to its target, back into it (target stays in front,
+    // dodge/parry preserved) instead of turning its back. Forward moves toward
+    // the target are unchanged. Cheap and near-free for non-tanks.
+    backwards = backwards || ShouldTankBackpedalTo(x, y, z);
+
     bool generatePath = !bot->IsFlying() && !bot->isSwimming();
     bool disableMoveSplinePath =
         sPlayerbotAIConfig.disableMoveSplinePath >= 2 ||
@@ -1825,6 +1831,50 @@ void MovementAction::DoMovePoint(Unit* unit, float x, float y, float z, bool gen
             /*generatePath*/ generatePath,  // true => terrain path (2d mmap); false => straight spline (3d vmap)
             /*forceDestination*/ false);
     }
+}
+
+// Max distance a tank will back into a destination (yards). Backing up uses
+// run-back speed (slower), so beyond this it turns and runs forward like a real
+// player would, re-facing the target on arrival (SetFacingTargetAction).
+constexpr float TANK_BACKPEDAL_MAX_DIST = 18.0f;
+
+bool MovementAction::ShouldTankBackpedalTo(float x, float y, float z)
+{
+    // Tanks only: a DPS/healer exposing its back is harmless, and melee often
+    // want to stand behind the boss. IsTank first so this is near-free otherwise.
+    if (!botAI->IsTank(bot))
+        return false;
+
+    // Only while actively tanking. Out of combat, travel normally.
+    if (!bot->IsInCombat())
+        return false;
+
+    // Vehicles drive their own orientation; don't fight it.
+    if (bot->GetVehicle())
+        return false;
+
+    Unit* target = AI_VALUE(Unit*, "current target");
+    if (!target)
+        target = bot->GetVictim();
+    if (!target || target == bot)
+        return false;
+
+    // Run-back is slow; only backpedal short repositions (see constant above).
+    if (bot->GetExactDist2d(x, y) > TANK_BACKPEDAL_MAX_DIST)
+        return false;
+
+    // theta = angle between (bot->destination) and (bot->target).
+    //   theta <= 90 deg: destination is toward the target -> moving forward
+    //     already keeps the target in front; leave it forward.
+    //   theta  > 90 deg: destination is behind us relative to the target -> a
+    //     forward move would turn our back, so back into it instead.
+    // With this 90 deg split the target is provably kept within the bot's front
+    // 180 deg for any destination (inverted-facing offset from target = 180 - theta).
+    float diff = Position::NormalizeOrientation(bot->GetAngle(x, y) - bot->GetAngle(target));
+    if (diff > M_PI)
+        diff = 2.0f * M_PI - diff;  // fold to 0..PI
+
+    return diff > M_PI_2;
 }
 
 bool FleeAction::Execute(Event /*event*/)

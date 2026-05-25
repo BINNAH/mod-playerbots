@@ -80,6 +80,10 @@ private:
                                                   bool normal_only = false, float step = 8.0f);
     bool wasMovementRestricted = false;
     void DoMovePoint(Unit* unit, float x, float y, float z, bool generatePath, bool backwards);
+    // Returns true when a tank should back into the destination (keeping its
+    // target in front, preserving dodge/parry) instead of turning its back.
+    // See MoveTo / ShouldTankBackpedalTo in the .cpp.
+    bool ShouldTankBackpedalTo(float x, float y, float z);
 };
 
 class FleeAction : public MovementAction
