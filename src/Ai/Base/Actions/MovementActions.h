@@ -82,8 +82,11 @@ private:
     void DoMovePoint(Unit* unit, float x, float y, float z, bool generatePath, bool backwards);
     // Returns true when a tank should back into the destination (keeping its
     // target in front, preserving dodge/parry) instead of turning its back.
-    // See MoveTo / ShouldTankBackpedalTo in the .cpp.
+    // Decided per-tick from the live position. See MoveTo / ShouldTankBackpedalTo.
     bool ShouldTankBackpedalTo(float x, float y, float z);
+    // True when an in-progress tank move must be re-issued because its facing
+    // mode (forward <-> backpedal) flipped this tick. See MoveTo.
+    bool ShouldReissueForFacing(bool wantBackwards);
 };
 
 class FleeAction : public MovementAction

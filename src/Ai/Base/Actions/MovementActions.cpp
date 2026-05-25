@@ -175,21 +175,28 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
     {
         return false;
     }
-    if (IsDuplicateMove(x, y, z))
-    {
-        return false;
-    }
-    if (IsWaitingForLastMove(priority))
-    {
-        return false;
-    }
-
-    // Tank facing: when a forward move would leave a tank settling with its back
-    // to its target -- including destinations on the far side of the boss, where
-    // the path runs through it -- back into the spot instead so dodge/parry is
-    // kept. Forward moves that arrive facing the target are unchanged. Near-free
-    // for non-tanks. See ShouldTankBackpedalTo.
+    // Tank facing: pick forward vs. backpedal from the LIVE position so the tank
+    // keeps its target in the front arc for the whole path -- running in facing
+    // the boss, then spinning to backpedal the instant he would fall behind
+    // (e.g. a path that runs through the boss to a spot on his far side). See
+    // ShouldTankBackpedalTo. Computed before the throttles below because a
+    // mid-path flip needs to re-issue to the same destination.
     backwards = backwards || ShouldTankBackpedalTo(x, y, z);
+
+    // A facing flip re-issues the move to the same spot, so it must punch
+    // through the duplicate / last-move throttles (which exist to suppress
+    // same-spot re-issues). Hysteresis in ShouldTankBackpedalTo keeps this from
+    // chattering. Fresh moves and non-tanks still throttle normally.
+    bool facingFlip = ShouldReissueForFacing(backwards);
+
+    if (!facingFlip && IsDuplicateMove(x, y, z))
+    {
+        return false;
+    }
+    if (!facingFlip && IsWaitingForLastMove(priority))
+    {
+        return false;
+    }
 
     bool generatePath = !bot->IsFlying() && !bot->isSwimming();
     bool disableMoveSplinePath =
@@ -1866,26 +1873,48 @@ bool MovementAction::ShouldTankBackpedalTo(float x, float y, float z)
     if (bot->GetExactDist2d(x, y) > TANK_BACKPEDAL_MAX_DIST)
         return false;
 
-    // Decide by where we'd be FACING on arrival, not by our current angle to the
-    // target. A forward move ends facing its travel direction (bot -> dest); a
-    // backpedal ends facing the reverse. Pick whichever leaves the target in
-    // front at the destination:
+    // Per-tick decision from the LIVE position: is the target in the front
+    // hemisphere of our heading toward the destination? MoveTo re-evaluates this
+    // every tick and re-issues the spline when it flips (ShouldReissueForFacing),
+    // so the tank runs in facing the boss and then spins to backpedal the instant
+    // he would fall behind -- e.g. a path that runs through the boss to a spot on
+    // his far side. Forward keeps the target in front while heading toward it;
+    // backpedal keeps him in front while heading away.
     //
-    //   (bot -> dest) . (dest -> target) >= 0  -> forward arrival faces target
-    //   (bot -> dest) . (dest -> target) <  0  -> forward would arrive with the
-    //                                             target behind, so backpedal
-    //
-    // Using the arrival relationship (instead of a start-angle test) is what
-    // handles a destination on the FAR side of the target: the path runs through
-    // the target, so from the start the destination looks "toward" it and a
-    // start-angle test wrongly picks forward and settles back-to-boss. The dot
-    // below correctly picks backpedal so the tank ends up facing the target.
-    float travelX = x - bot->GetPositionX();
-    float travelY = y - bot->GetPositionY();
-    float destToTargetX = target->GetPositionX() - x;
-    float destToTargetY = target->GetPositionY() - y;
+    //   heading = bot -> destination,  toTarget = bot -> target
+    //   cos(angle) = (heading . toTarget) / (|heading| |toTarget|)
+    float headingX = x - bot->GetPositionX();
+    float headingY = y - bot->GetPositionY();
+    float toTargetX = target->GetPositionX() - bot->GetPositionX();
+    float toTargetY = target->GetPositionY() - bot->GetPositionY();
 
-    return (travelX * destToTargetX + travelY * destToTargetY) < 0.0f;
+    float headingLen = sqrt(headingX * headingX + headingY * headingY);
+    float toTargetLen = sqrt(toTargetX * toTargetX + toTargetY * toTargetY);
+    if (headingLen < 0.01f || toTargetLen < 0.01f)
+        return false;  // on top of the destination or the target; nothing to decide
+
+    float cosAngle = (headingX * toTargetX + headingY * toTargetY) / (headingLen * toTargetLen);
+
+    // Hysteresis around 90 deg (cos 0) so we don't chatter splines at the
+    // boundary: only switch to backpedal once the target is clearly behind the
+    // heading (> ~100 deg), and back to forward once clearly ahead (< ~80 deg).
+    constexpr float kCosClearlyAhead = 0.17f;    // ~80 deg
+    constexpr float kCosClearlyBehind = -0.17f;  // ~100 deg
+    if (bot->HasUnitMovementFlag(MOVEMENTFLAG_BACKWARD))
+        return cosAngle < kCosClearlyAhead;  // keep backpedaling until clearly ahead
+    return cosAngle < kCosClearlyBehind;     // stay forward until clearly behind
+}
+
+bool MovementAction::ShouldReissueForFacing(bool wantBackwards)
+{
+    // Force a re-issue only for a tank that is already moving and whose facing
+    // mode needs to flip (forward <-> backpedal) to the same destination -- the
+    // throttles in MoveTo would otherwise swallow the flip. Fresh moves and
+    // non-tanks go through the normal throttles.
+    if (!botAI->IsTank(bot) || !bot->isMoving())
+        return false;
+
+    return wantBackwards != bot->HasUnitMovementFlag(MOVEMENTFLAG_BACKWARD);
 }
 
 bool FleeAction::Execute(Event /*event*/)
