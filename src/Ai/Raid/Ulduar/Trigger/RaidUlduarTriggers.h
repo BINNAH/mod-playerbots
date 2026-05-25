@@ -99,6 +99,13 @@ public:
     bool IsActive() override;
 };
 
+class IronAssemblyRuneOfDeathTrigger : public Trigger
+{
+public:
+    IronAssemblyRuneOfDeathTrigger(PlayerbotAI* ai) : Trigger(ai, "iron assembly rune of death trigger") {}
+    bool IsActive() override;
+};
+
 //
 // Kologarn
 //

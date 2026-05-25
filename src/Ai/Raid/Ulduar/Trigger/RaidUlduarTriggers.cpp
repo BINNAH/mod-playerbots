@@ -9,6 +9,7 @@
 #include "RaidUlduarScripts.h"
 #include "ScriptedCreature.h"
 #include "SharedDefines.h"
+#include "SpellAuraEffects.h"
 #include "Trigger.h"
 #include "Vehicle.h"
 #include <MovementActions.h>
@@ -313,6 +314,20 @@ bool IronAssemblyRuneOfPowerTrigger::IsActive()
         return false;
 
     return botAI->IsTank(bot);
+}
+
+bool IronAssemblyRuneOfDeathTrigger::IsActive()
+{
+    // Rune of Death (Runemaster Molgeim) is a persistent ground rune: standing in
+    // it applies a dynamic-object periodic-damage aura. Detect it via the shared
+    // "area debuff" value (the aura on us) rather than via the boss, so it works
+    // even for bots that don't hold threat on Molgeim.
+    Aura* aura = AI_VALUE(Aura*, "area debuff");
+    if (!aura)
+        return false;
+
+    SpellInfo const* spellInfo = aura->GetSpellInfo();
+    return spellInfo && spellInfo->Id == SPELL_RUNE_OF_DEATH;
 }
 
 bool KologarnMarkDpsTargetTrigger::IsActive()

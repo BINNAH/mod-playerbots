@@ -109,6 +109,7 @@ private:
     static Action* iron_assembly_lightning_tendrils_action(PlayerbotAI* ai) { return new IronAssemblyLightningTendrilsAction(ai); }
     static Action* iron_assembly_overload_action(PlayerbotAI* ai) { return new IronAssemblyOverloadAction(ai); }
     static Action* iron_assembly_rune_of_power_action(PlayerbotAI* ai) { return new IronAssemblyRuneOfPowerAction(ai); }
+    static Action* iron_assembly_rune_of_death_action(PlayerbotAI* ai) { return new IronAssemblyRuneOfDeathAction(ai); }
     static Action* kologarn_mark_dps_target_action(PlayerbotAI* ai) { return new KologarnMarkDpsTargetAction(ai); }
     static Action* kologarn_fall_from_floor_action(PlayerbotAI* ai) { return new KologarnFallFromFloorAction(ai); }
     static Action* kologarn_nature_resistance_action(PlayerbotAI* ai) { return new BossNatureResistanceAction(ai, "kologarn"); }

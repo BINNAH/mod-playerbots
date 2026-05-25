@@ -139,6 +139,14 @@ public:
     bool isUseful() override;
 };
 
+class IronAssemblyRuneOfDeathAction : public MovementAction
+{
+public:
+    IronAssemblyRuneOfDeathAction(PlayerbotAI* botAI) : MovementAction(botAI, "iron assembly rune of death action") {}
+    bool Execute(Event event) override;
+    bool isUseful() override;
+};
+
 class KologarnMarkDpsTargetAction : public Action
 {
 public:

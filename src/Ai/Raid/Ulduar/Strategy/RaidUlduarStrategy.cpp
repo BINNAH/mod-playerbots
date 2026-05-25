@@ -93,6 +93,15 @@ void RaidUlduarStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         "iron assembly rune of power trigger",
         { NextAction("iron assembly rune of power action", ACTION_RAID) }));
 
+    // Rune of Death drops a persistent shadow-damage rune on a random target,
+    // usually the melee stack. The generic "avoid aoe" (ACTION_EMERGENCY) lost a
+    // tug-of-war with reach-melee / combat-formation and left bots stutter-
+    // stepping inside the rune. Run one step above it so a single decisive radial
+    // escape owns the movement until the bot is clear.
+    triggers.push_back(new TriggerNode(
+        "iron assembly rune of death trigger",
+        { NextAction("iron assembly rune of death action", ACTION_EMERGENCY + 1) }));
+
     //
     // Kologarn
     //

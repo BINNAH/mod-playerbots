@@ -110,6 +110,7 @@ private:
     static Trigger* iron_assembly_lightning_tendrils_trigger(PlayerbotAI* ai) { return new IronAssemblyLightningTendrilsTrigger(ai); }
     static Trigger* iron_assembly_overload_trigger(PlayerbotAI* ai) { return new IronAssemblyOverloadTrigger(ai); }
     static Trigger* iron_assembly_rune_of_power_trigger(PlayerbotAI* ai) { return new IronAssemblyRuneOfPowerTrigger(ai); }
+    static Trigger* iron_assembly_rune_of_death_trigger(PlayerbotAI* ai) { return new IronAssemblyRuneOfDeathTrigger(ai); }
     static Trigger* kologarn_mark_dps_target_trigger(PlayerbotAI* ai) { return new KologarnMarkDpsTargetTrigger(ai); }
     static Trigger* kologarn_fall_from_floor_trigger(PlayerbotAI* ai) { return new KologarnFallFromFloorTrigger(ai); }
     static Trigger* kologarn_nature_resistance_trigger(PlayerbotAI* ai) { return new BossNatureResistanceTrigger(ai, "kologarn"); }

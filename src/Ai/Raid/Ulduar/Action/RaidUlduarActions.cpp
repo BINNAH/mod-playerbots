@@ -8,6 +8,7 @@
 
 #include "AiObjectContext.h"
 #include "DBCEnums.h"
+#include "DynamicObject.h"
 #include "GameObject.h"
 #include "Group.h"
 #include "LastMovementValue.h"
@@ -22,6 +23,7 @@
 #include "RtiValue.h"
 #include "ScriptedCreature.h"
 #include "ServerFacade.h"
+#include "SpellAuraEffects.h"
 #include "Unit.h"
 #include "Vehicle.h"
 #include <RtiTargetValue.h>
@@ -1160,6 +1162,48 @@ bool IronAssemblyRuneOfPowerAction::Execute(Event /*event*/)
         return false;
 
     return MoveAway(target, 10.0f, true);
+}
+
+bool IronAssemblyRuneOfDeathAction::isUseful()
+{
+    IronAssemblyRuneOfDeathTrigger ironAssemblyRuneOfDeathTrigger(botAI);
+    return ironAssemblyRuneOfDeathTrigger.IsActive();
+}
+
+bool IronAssemblyRuneOfDeathAction::Execute(Event /*event*/)
+{
+    Aura* aura = AI_VALUE(Aura*, "area debuff");
+    if (!aura)
+        return false;
+
+    SpellInfo const* spellInfo = aura->GetSpellInfo();
+    if (!spellInfo || spellInfo->Id != SPELL_RUNE_OF_DEATH)
+        return false;
+
+    DynamicObject* rune = aura->GetDynobjOwner();
+    if (!rune)
+        return false;
+
+    // Step clear in one decisive radial move. Crucially we return true while
+    // still inside the rune so the action chain stops here -- that keeps
+    // reach-melee / combat-formation from dragging the bot straight back in,
+    // which was the competing-movement stutter that left bots ticking to death.
+    float safeDistance = rune->GetRadius() + 5.0f;  // clear radius + a margin
+    float distance = bot->GetExactDist2d(rune->GetPositionX(), rune->GetPositionY());
+    if (distance >= safeDistance)
+        return false;  // already clear -- let the normal rotation resume
+
+    // Move straight out along the rune-center -> bot bearing. Using the radial
+    // bearing (not a live chase point) keeps the destination stable as the bot
+    // runs out, and makes multiple bots fan apart instead of stacking.
+    float angle = distance > 0.5f ? rune->GetAngle(bot) : bot->GetOrientation();
+    float x = rune->GetPositionX() + cos(angle) * safeDistance;
+    float y = rune->GetPositionY() + sin(angle) * safeDistance;
+    float z = bot->GetPositionZ();
+    bot->UpdateAllowedPositionZ(x, y, z);
+
+    MoveTo(bot->GetMapId(), x, y, z, false, false, false, false, MovementPriority::MOVEMENT_COMBAT);
+    return true;
 }
 
 bool KologarnMarkDpsTargetAction::isUseful()
