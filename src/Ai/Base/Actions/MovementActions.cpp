@@ -184,10 +184,11 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
         return false;
     }
 
-    // Tank facing: when a tank in combat repositions to a spot in the rear
-    // hemisphere relative to its target, back into it (target stays in front,
-    // dodge/parry preserved) instead of turning its back. Forward moves toward
-    // the target are unchanged. Cheap and near-free for non-tanks.
+    // Tank facing: when a forward move would leave a tank settling with its back
+    // to its target -- including destinations on the far side of the boss, where
+    // the path runs through it -- back into the spot instead so dodge/parry is
+    // kept. Forward moves that arrive facing the target are unchanged. Near-free
+    // for non-tanks. See ShouldTankBackpedalTo.
     backwards = backwards || ShouldTankBackpedalTo(x, y, z);
 
     bool generatePath = !bot->IsFlying() && !bot->isSwimming();
@@ -1865,18 +1866,26 @@ bool MovementAction::ShouldTankBackpedalTo(float x, float y, float z)
     if (bot->GetExactDist2d(x, y) > TANK_BACKPEDAL_MAX_DIST)
         return false;
 
-    // theta = angle between (bot->destination) and (bot->target).
-    //   theta <= 90 deg: destination is toward the target -> moving forward
-    //     already keeps the target in front; leave it forward.
-    //   theta  > 90 deg: destination is behind us relative to the target -> a
-    //     forward move would turn our back, so back into it instead.
-    // With this 90 deg split the target is provably kept within the bot's front
-    // 180 deg for any destination (inverted-facing offset from target = 180 - theta).
-    float diff = Position::NormalizeOrientation(bot->GetAngle(x, y) - bot->GetAngle(target));
-    if (diff > M_PI)
-        diff = 2.0f * M_PI - diff;  // fold to 0..PI
+    // Decide by where we'd be FACING on arrival, not by our current angle to the
+    // target. A forward move ends facing its travel direction (bot -> dest); a
+    // backpedal ends facing the reverse. Pick whichever leaves the target in
+    // front at the destination:
+    //
+    //   (bot -> dest) . (dest -> target) >= 0  -> forward arrival faces target
+    //   (bot -> dest) . (dest -> target) <  0  -> forward would arrive with the
+    //                                             target behind, so backpedal
+    //
+    // Using the arrival relationship (instead of a start-angle test) is what
+    // handles a destination on the FAR side of the target: the path runs through
+    // the target, so from the start the destination looks "toward" it and a
+    // start-angle test wrongly picks forward and settles back-to-boss. The dot
+    // below correctly picks backpedal so the tank ends up facing the target.
+    float travelX = x - bot->GetPositionX();
+    float travelY = y - bot->GetPositionY();
+    float destToTargetX = target->GetPositionX() - x;
+    float destToTargetY = target->GetPositionY() - y;
 
-    return diff > M_PI_2;
+    return (travelX * destToTargetX + travelY * destToTargetY) < 0.0f;
 }
 
 bool FleeAction::Execute(Event /*event*/)
