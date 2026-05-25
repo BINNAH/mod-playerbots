@@ -1833,10 +1833,12 @@ void MovementAction::DoMovePoint(Unit* unit, float x, float y, float z, bool gen
     }
 }
 
-// Max distance a tank will back into a destination (yards). Backing up uses
-// run-back speed (slower), so beyond this it turns and runs forward like a real
-// player would, re-facing the target on arrival (SetFacingTargetAction).
-constexpr float TANK_BACKPEDAL_MAX_DIST = 18.0f;
+// Max distance a tank will back into a destination (yards). Run-back is slower
+// than forward, but the user prefers always keeping the boss in front over
+// arrival speed, so this is set high enough to cover essentially any in-combat
+// reposition -- it's really just a sanity ceiling. Beyond it the tank turns and
+// runs forward, re-facing the target on arrival (SetFacingTargetAction).
+constexpr float TANK_BACKPEDAL_MAX_DIST = 200.0f;
 
 bool MovementAction::ShouldTankBackpedalTo(float x, float y, float z)
 {
@@ -1859,7 +1861,7 @@ bool MovementAction::ShouldTankBackpedalTo(float x, float y, float z)
     if (!target || target == bot)
         return false;
 
-    // Run-back is slow; only backpedal short repositions (see constant above).
+    // High cap (see constant) -> covers nearly all in-combat repositions.
     if (bot->GetExactDist2d(x, y) > TANK_BACKPEDAL_MAX_DIST)
         return false;
 
