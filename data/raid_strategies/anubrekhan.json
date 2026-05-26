@@ -6,7 +6,7 @@
       "_comment": "Main tank holds the boss outside Locust Swarm.",
       "trigger": { "shape": "encounter_active", "role": "maintank", "boss_aura": "locust swarm", "aura_present": false },
       "actions": [
-        { "shape": "attack_target", "params": { "target": "anub'rekhan" }, "priority": 1 }
+        { "shape": "attack", "params": { "targets": "anub'rekhan" }, "priority": 1 }
       ]
     },
     {
@@ -38,10 +38,10 @@
       ]
     },
     {
-      "_comment": "DPS kill Crypt Guards first, then the boss. Outside Locust Swarm (ranged also spread via the rule above).",
+      "_comment": "DPS clear adds first, then the boss: a dying Crypt Guard bursts into 10 Corpse Scarabs that swarm the raid, so both must be named here or ranged ignore the scarabs and tunnel the boss while the swarm chews on the casters. Targeting a scarab also drops the casters' AoE (Mind Sear / Blizzard) onto the cluster. Outside Locust Swarm (ranged also spread via the rule above).",
       "trigger": { "shape": "encounter_active", "role": "dps", "boss_aura": "locust swarm", "aura_present": false },
       "actions": [
-        { "shape": "attack_priority", "params": { "adds": "crypt guard", "boss": "anub'rekhan" }, "priority": 1 }
+        { "shape": "attack", "params": { "targets": ["crypt guard", "corpse scarab"], "boss": "anub'rekhan" }, "priority": 1 }
       ]
     }
   ]

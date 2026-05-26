@@ -29,6 +29,12 @@ bool FourHorsemenAttackInOrderAction::Execute(Event /*event*/)
     if (!helper.UpdateBossAI())
         return false;
 
+    // Once the front melee pair is dead, the dedicated back-phase action
+    // (ACTION_RAID + 2) owns DPS/tank targeting + movement so we don't fight it
+    // over "current target". Healers keep running their park branch below.
+    if (helper.FrontPairDead() && !PlayerbotAI::IsHeal(bot))
+        return false;
+
     Unit* target = nullptr;
     Unit* thane = AI_VALUE2(Unit*, "find target", "thane korth'azz");
     Unit* lady = AI_VALUE2(Unit*, "find target", "lady blaumeux");
@@ -166,4 +172,39 @@ bool FourHorsemenHealerBleedOffMarkAction::Execute(Event /*event*/)
 
     return MoveTo(bot->GetMapId(), x, y, helper.posZ,
                   false, false, false, false, MovementPriority::MOVEMENT_COMBAT);
+}
+
+bool FourHorsemenBackPhaseAction::Execute(Event /*event*/)
+{
+    // Instance-gated (not threat-gated): a front DPS that only ever hit
+    // Thane/Baron has no threat on the casters, so it could never acquire them
+    // through "find target" and just idled once the front pair died. Here we
+    // pull the live casters straight from the instance script.
+    if (!helper.EncounterEngaged() || !helper.FrontPairDead())
+        return false;
+
+    Unit* lady = helper.LadyAlive();
+    Unit* sir = helper.SirAlive();
+    Unit* target = helper.PickBackBoss(bot, lady, sir);
+    if (!target)
+        return false;  // both casters down — encounter is over
+
+    // Park on a stable, puddle-free home for this caster. Switching targets
+    // (lady<->sir) is what relocates the bot ~70y to shed Mark stacks; within a
+    // caster the home is fixed, so the bot settles instead of dancing.
+    bool ranged = botAI->IsRanged(bot);
+    auto [hx, hy] = helper.BackPhaseHomePos(bot, target, ranged);
+    float tolerance = ranged ? 4.0f : 3.0f;
+    if (bot->GetDistance2d(hx, hy) > tolerance &&
+        MoveTo(bot->GetMapId(), hx, hy, helper.posZ,
+               false, false, false, false, MovementPriority::MOVEMENT_COMBAT))
+        return true;
+
+    if (!bot->IsWithinLOSInMap(target))
+        return MoveNear(target, ranged ? 25.0f : 5.0f, MovementPriority::MOVEMENT_COMBAT);
+
+    if (context->GetValue<Unit*>("current target")->Get() != target)
+        return Attack(target);
+
+    return false;  // parked + on target — let the rotation/heal actions run
 }

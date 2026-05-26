@@ -1,0 +1,13 @@
+{
+  "name": "faerlina",
+  "boss": "grand widow faerlina",
+  "rules": [
+    {
+      "_comment": "Faithful copy of C++ FaerlinaTrigger (RaidNaxxStrategy.cpp): while Grand Widow Faerlina is engaged, everyone just dodges ground AoE. No role gate. The C++ encounter is currently a stub - no Rain of Fire / Frenzy / Widow's Embrace add handling exists yet, so neither does this.",
+      "trigger": { "shape": "encounter_active", "boss": "grand widow faerlina" },
+      "actions": [
+        { "name": "avoid aoe", "priority": 1 }
+      ]
+    }
+  ]
+}

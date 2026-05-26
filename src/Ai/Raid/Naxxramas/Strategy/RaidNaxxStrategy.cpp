@@ -168,6 +168,15 @@ void RaidNaxxStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         { NextAction("four horsemen attack in order", ACTION_RAID + 1) }
     ));
 
+    // Back phase (front melee pair dead): DPS + tanks collapse onto the casters,
+    // switching between Lady and Sir to bleed Mark stacks. +2 sits above the
+    // attract/attack-in-order positioning (+1) so it owns the front team's
+    // targeting once the front pair is down, but stays below mark bleed-off (+3)
+    // and void-zone avoidance (+4) so survival movement still wins the tick.
+    triggers.push_back(new TriggerNode("four horsemen back phase",
+        { NextAction("four horsemen back phase", ACTION_RAID + 2) }
+    ));
+
     // Opening burst: every bot pops its personal damage-reduction cooldown.
     // One node, one entry per class — only the action matching the bot's class
     // resolves, the rest no-op (so each bot fires exactly what it has). Curated
@@ -210,6 +219,7 @@ void RaidNaxxStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     triggers.push_back(
         new TriggerNode("gluth",
         {
+            NextAction("gluth burn adds", ACTION_RAID + 2),
             NextAction("gluth choose target", ACTION_RAID + 1),
             NextAction("gluth position", ACTION_RAID + 1),
             NextAction("gluth slowdown", ACTION_RAID)

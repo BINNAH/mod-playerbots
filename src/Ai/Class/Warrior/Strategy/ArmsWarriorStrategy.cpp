@@ -112,6 +112,10 @@ std::vector<NextAction> ArmsWarriorStrategy::getDefaultActions()
     return {
         NextAction("bladestorm", ACTION_DEFAULT + 0.2f),
         NextAction("mortal strike", ACTION_DEFAULT + 0.1f),
+        // solo-raid: low-priority filler so a DPS warrior keeps the boss's -AP
+        // debuff up when no other class covers it (self-gates on debuff-missing
+        // + melee range). See FuryWarriorStrategy for rationale.
+        NextAction("demoralizing shout", ACTION_DEFAULT + 0.05f),
         NextAction("melee", ACTION_DEFAULT)
     };
 }
@@ -142,6 +146,18 @@ void ArmsWarriorStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
             "battle shout",
             {
                 NextAction("battle shout", ACTION_HIGH + 9)
+            }
+        )
+    );
+
+    // solo-raid: also maintain Commanding Shout (raid max-HP buff); separate
+    // buff from Battle Shout, any stance, only fires when missing. See
+    // FuryWarriorStrategy for the full rationale.
+    triggers.push_back(
+        new TriggerNode(
+            "commanding shout",
+            {
+                NextAction("commanding shout", ACTION_HIGH + 7)
             }
         )
     );

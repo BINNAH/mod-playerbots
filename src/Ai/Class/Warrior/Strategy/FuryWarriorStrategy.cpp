@@ -81,6 +81,11 @@ std::vector<NextAction> FuryWarriorStrategy::getDefaultActions()
         NextAction("whirlwind", ACTION_DEFAULT + 0.4f),
         NextAction("sunder armor", ACTION_DEFAULT + 0.3f),
         NextAction("execute", ACTION_DEFAULT + 0.2f),
+        // solo-raid: low-priority filler so a DPS warrior keeps the boss's -AP
+        // debuff up when no other class covers it. Any stance; the action
+        // self-gates on debuff-missing + melee range, so it only fires ~1 GCD
+        // per 30s and falls through to melee otherwise.
+        NextAction("demoralizing shout", ACTION_DEFAULT + 0.15f),
         NextAction("melee", ACTION_DEFAULT)
     };
 }
@@ -109,6 +114,19 @@ void FuryWarriorStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
             "battle shout",
             {
                 NextAction("battle shout", ACTION_HIGH + 8)
+            }
+        )
+    );
+    // solo-raid: also maintain Commanding Shout (raid max-HP buff). It's a
+    // separate buff from Battle Shout (a DPS warrior can keep both up) and
+    // works in any stance. The trigger only fires when the buff is missing, so
+    // it costs ~1 GCD / 2 min and won't recast if another warrior already has
+    // it up. Sits just below Battle Shout so AP is prioritised when both lapse.
+    triggers.push_back(
+        new TriggerNode(
+            "commanding shout",
+            {
+                NextAction("commanding shout", ACTION_HIGH + 7)
             }
         )
     );

@@ -1,0 +1,30 @@
+{
+  "name": "loatheb",
+  "boss": "loatheb",
+  "_comment": "Level-2 JSON port of the C++ Loatheb strategy (LoathebPositionAction + LoathebChooseTargetAction). Loatheb is a single-phase tank-and-spank, so encounter_active stays true for the whole fight with no blind-spot gaps. NOT PORTED: LoathebGenericMultiplier - json-raid has no multiplier layer. Under .rjson on you therefore lose (a) Necrotic-Aura heal-window gating (healers will try to heal into the aura; the game blocks it ~99% so it's wasted mana/globals, not a wipe) and (b) neglect-threat + formation-move suppression (normal threat applies again - this strat keeps the tank glued to the boss to compensate). .rjson off restores the full C++ behavior. Coords copied verbatim from RaidNaxxBossHelper.h: mainTankPos {2877.57,-3967.00}, rangePos {2896.96,-3980.61}.",
+  "rules": [
+    {
+      "_comment": "Main tank holds Loatheb at the C++ mainTankPos and stays on the boss (attack@1). The tank is excluded from the Spore rule below because IsDps is false for a pure tank, so it never abandons the boss - critical here since json-raid has no neglect-threat multiplier and a wandering tank would drop aggro to a DPS bot.",
+      "trigger": { "shape": "encounter_active", "role": "maintank" },
+      "actions": [
+        { "shape": "stack_point", "params": { "x": 2877.57, "y": -3967.00, "radius": 2.0 }, "priority": 3 },
+        { "shape": "attack", "params": { "targets": "loatheb" }, "priority": 1 }
+      ]
+    },
+    {
+      "_comment": "Ranged + healers stack at the C++ rangePos and stay on the boss. stack_point@3 anchors them there: ranged DPS that also match the dps Spore rule below will nuke a Spore from rangePos when it's in range, but never run across the room (the anchor wins movement). Healers heal via their base strategy; attack@1 is a low-priority filler so they contribute when not casting.",
+      "trigger": { "shape": "encounter_active", "role": "ranged,healer" },
+      "actions": [
+        { "shape": "stack_point", "params": { "x": 2896.96, "y": -3980.61, "radius": 2.0 }, "priority": 3 },
+        { "shape": "attack", "params": { "targets": "loatheb" }, "priority": 1 }
+      ]
+    },
+    {
+      "_comment": "DPS burst the Spore add (entry 16286) the instant one spawns, then fall back to Loatheb. Melee in the pile earn Fungal Bloom (+50% crit) when it dies. select defaults to lowest_hp (kill the add first); the Spore enters combat via SetInCombatWithZone so the default threat-detection sees it immediately. Gated to dps (NOT melee) so the tank is excluded; drops the C++ 1.0y proximity gate so all melee swap on spawn instead of only the adjacent one, and lets ranged help finish the add.",
+      "trigger": { "shape": "encounter_active", "role": "dps" },
+      "actions": [
+        { "shape": "attack", "params": { "targets": 16286, "boss": "loatheb" }, "priority": 2 }
+      ]
+    }
+  ]
+}

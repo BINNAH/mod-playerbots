@@ -37,18 +37,18 @@ public:
         creators["json orbit"] = &JsonStrategyActionContext::json_orbit;
         creators["json stack"] = &JsonStrategyActionContext::json_stack;
         creators["json spread"] = &JsonStrategyActionContext::json_spread;
-        creators["json attack"] = &JsonStrategyActionContext::json_attack;
-        creators["json attackpriority"] = &JsonStrategyActionContext::json_attackpriority;
+        creators["json attackpick"] = &JsonStrategyActionContext::json_attackpick;
         creators["json tankadds"] = &JsonStrategyActionContext::json_tankadds;
+        creators["json safezone"] = &JsonStrategyActionContext::json_safezone;
     }
 
 private:
     static Action* json_orbit(PlayerbotAI* ai) { return new JsonOrbitPointAction(ai); }
     static Action* json_stack(PlayerbotAI* ai) { return new JsonStackPointAction(ai); }
     static Action* json_spread(PlayerbotAI* ai) { return new JsonSpreadAction(ai); }
-    static Action* json_attack(PlayerbotAI* ai) { return new JsonAttackTargetAction(ai); }
-    static Action* json_attackpriority(PlayerbotAI* ai) { return new JsonAttackPriorityAction(ai); }
+    static Action* json_attackpick(PlayerbotAI* ai) { return new JsonAttackAction(ai); }
     static Action* json_tankadds(PlayerbotAI* ai) { return new JsonTankAddsAction(ai); }
+    static Action* json_safezone(PlayerbotAI* ai) { return new JsonTimedSafeZoneAction(ai); }
 };
 
 class JsonStrategyTriggerContext : public NamedObjectContext<Trigger>
@@ -57,10 +57,12 @@ public:
     JsonStrategyTriggerContext()
     {
         creators["json encounter"] = &JsonStrategyTriggerContext::json_encounter;
+        creators["json precast"] = &JsonStrategyTriggerContext::json_precast;
     }
 
 private:
     static Trigger* json_encounter(PlayerbotAI* ai) { return new JsonEncounterActiveTrigger(ai); }
+    static Trigger* json_precast(PlayerbotAI* ai) { return new JsonPreCastWindowTrigger(ai); }
 };
 
 #endif

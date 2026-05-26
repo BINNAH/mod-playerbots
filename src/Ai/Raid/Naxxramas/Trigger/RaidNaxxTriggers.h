@@ -324,6 +324,21 @@ private:
     FourHorsemenBossHelper helper;
 };
 
+// Back phase: both front melee bosses (Thane + Baron) are dead. Routes the
+// surviving DPS and (now jobless) tanks onto the back casters via the
+// back-phase action. Attractors are excluded (they keep soaking so Lady/Sir
+// never punish the raid for an out-of-range victim); healers are excluded (they
+// keep their existing park/bleed-off positioning).
+class FourHorsemenBackPhaseTrigger : public Trigger
+{
+public:
+    FourHorsemenBackPhaseTrigger(PlayerbotAI* ai) : Trigger(ai, "four horsemen back phase"), helper(ai) {}
+    bool IsActive() override;
+
+private:
+    FourHorsemenBossHelper helper;
+};
+
 class SapphironGroundTrigger : public Trigger
 {
 public:

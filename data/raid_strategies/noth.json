@@ -1,0 +1,15 @@
+{
+  "name": "noth",
+  "boss": "noth the plaguebringer",
+  "rules": [
+    {
+      "_comment": "Level-2 copy of the C++ Noth strategy (off-tank gathers the Plagued adds onto the tank for the raid to cleave). No new shapes, no build: the action 'tank_adds' already self-detects the adds from the group 'attackers' list, self-gates to assist-tank #0, and does attack -> taunt -> reposition. We just need a trigger that fires in BOTH phases -- the existing generic 'has attackers' trigger (attacker count >= 1) does, including the balcony phase where Noth is non-attackable / off-threat and a 'find target noth' gate would go silent. tank_adds matches ONE name, and Noth has three add types, so list all three actions under one rule; they fall through (whichever add type is up acts this tick). Drags to the main tank's live position; for a fixed center cleave point (2684.94,-3502.53,261.31) tank_adds would need an optional x/y/z param (small C++ add). See BossNotes/Noth.md.",
+      "trigger": { "name": "has attackers" },
+      "actions": [
+        { "shape": "tank_adds", "params": { "add": "plagued warrior",  "boss": "noth the plaguebringer" }, "priority": 2 },
+        { "shape": "tank_adds", "params": { "add": "plagued champion", "boss": "noth the plaguebringer" }, "priority": 2 },
+        { "shape": "tank_adds", "params": { "add": "plagued guardian", "boss": "noth the plaguebringer" }, "priority": 2 }
+      ]
+    }
+  ]
+}

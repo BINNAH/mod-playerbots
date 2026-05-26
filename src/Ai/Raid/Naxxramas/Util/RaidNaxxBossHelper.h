@@ -9,6 +9,7 @@
 #include "AiObjectContext.h"
 #include "EventMap.h"
 #include "Group.h"
+#include "InstanceScript.h"
 #include "Log.h"
 #include "NamedObjectContext.h"
 #include "ObjectGuid.h"
@@ -540,13 +541,55 @@ private:
 class GluthBossHelper : public AiObject
 {
 public:
-    const std::pair<float, float> mainTankPos25 = {3331.48f, -3109.06f};
+    // 25-man: tank Gluth on the NE side at {3319, -3120} (the old spot sat ~58y
+    // NE, right by the exit, which dragged the ranged pack out the north door).
+    // The raid stacks on the SW / far side of the boss (rangedClusterPos25)
+    // while designated kiters work the zombie chow in the SW of the room near
+    // the gates — see GluthSlowdownAction.
+    const std::pair<float, float> mainTankPos25 = {3319.0f, -3120.0f};
     const std::pair<float, float> mainTankPos10 = {3278.29f, -3162.06f};
+    // Where the 25-man ranged/healer pack stacks: SW / behind the boss, opposite
+    // the NE tank, leaning toward the chow gates. Keeps casters in range to DPS
+    // Gluth AND to heal/support the kiters working the zombie stream in the SW.
+    // Bots fan out around this anchor by group slot. TUNABLE: nudge SW (toward
+    // the gates) if healers can't reach the kiters, NE (toward the boss) if
+    // kited zombies clip the pack.
+    const std::pair<float, float> rangedClusterPos25 = {3300.0f, -3140.0f};
     const std::pair<float, float> beforeDecimatePos = {3267.34f, -3175.68f};
     const std::pair<float, float> leftSlowDownPos = {3290.68f, -3141.65f};
     const std::pair<float, float> rightSlowDownPos = {3300.78f, -3151.98f};
     const std::pair<float, float> rangedPos = {3301.45f, -3139.29f};
     const std::pair<float, float> healPos = {3303.09f, -3135.24f};
+    // Where the 25-man kiters loop the zombie chow: a ring in the SW of the room
+    // among the chow gates, well clear of the boss (~43y NE) and the raid stack
+    // (~16y NE of the ring edge). Kiters orbit this ring dragging the aggroed
+    // chow with them, away from Gluth. TUNABLE: move the center SW / shrink the
+    // radius if chow leak toward the raid; the ring must stay on the chow's path
+    // up from the gates so new spawns get picked up and snared.
+    const std::pair<float, float> kiteCenter25 = {3276.0f, -3160.0f};
+    // Kite ring radius. Widened 15 → 20 so the kiters/off-tanks sweep further out
+    // to the LEFT and RIGHT, catching chow that were sneaking up the side lanes
+    // toward Gluth. TUNABLE: crank higher to cover more flank (mind the room
+    // walls — at 20 the ring edge still sits ~38y from the NE tank spot).
+    const float kiteRadius25 = 20.0f;
+    // Designated kiters: the first KITERS_PER_CLASS *bot* hunters and mages.
+    static constexpr uint32 KITERS_PER_CLASS = 2;
+    static constexpr uint32 NPC_ZOMBIE_CHOW = 16360;  // boss_gluth.cpp
+    static constexpr uint32 NPC_GLUTH = 15932;        // boss_gluth.cpp
+    // naxxramas.h BOSS_GLUTH encounter index, mirrored here (that header isn't on
+    // the playerbots include path — same trick as the Four Horsemen helper). Used
+    // for a THREAT-INDEPENDENT "is the pull live" check, so the off-tanks/kiters,
+    // who must never threaten Gluth, can still do their jobs from the pull.
+    static constexpr uint32 BOSS_GLUTH_ENCOUNTER = 2;
+    // Off-tanks also work the chow in the SW: they anchor the pack with AoE
+    // threat to keep it off Gluth, and start kiting (circling) it once
+    // OT_KITE_THRESHOLD+ chow are piled on them, so they aren't bursted down.
+    static constexpr uint32 OT_KITE_THRESHOLD = 6;
+    static constexpr float OT_HOLD_RADIUS = 9.0f;  // a chow within this is "on me"
+    // How far (yards) the two off-tanks split LEFT/RIGHT of the ring center to
+    // guard the side lanes. Widened 6 → 12 so they body+AoE the flanks the chow
+    // were slipping through, instead of bunching near center. TUNABLE.
+    static constexpr float OT_FLANK_OFFSET = 12.0f;
 
     const float decimatedZombiePct = 10.0f;
     GluthBossHelper(PlayerbotAI* botAI) : AiObject(botAI) {}
@@ -576,12 +619,15 @@ public:
     }
     bool BeforeDecimate()
     {
-        if (!_unit || !_unit->HasUnitState(UNIT_STATE_CASTING))
+        // BossAnyway() (not the threat-cached _unit) so the kiters — who never
+        // threaten Gluth — still detect the Decimate cast and bank their roots.
+        Unit* boss = BossAnyway();
+        if (!boss || !boss->HasUnitState(UNIT_STATE_CASTING))
             return false;
 
-        Spell* spell = _unit->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+        Spell* spell = boss->GetCurrentSpell(CURRENT_GENERIC_SPELL);
         if (!spell)
-            spell = _unit->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+            spell = boss->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
 
         if (!spell)
             return false;
@@ -599,6 +645,105 @@ public:
     }
     bool JustStartCombat() const { return _combat_start_ms != 0 && getMSTime() - _combat_start_ms < 10000; }
     bool IsZombieChow(Unit* unit) const { return unit && botAI->EqualLowercaseName(unit->GetName(), "zombie chow"); }
+    Unit* Boss() const { return _unit; }
+
+    // Gluth via the room scan (by entry), NOT the threat-based find-target. The
+    // chow handlers never threaten Gluth, so find-target returns null for them;
+    // this lets them read his position (leak detection) and lets the multiplier
+    // govern them without their ever having to touch the boss. "nearest npcs"
+    // reaches across the room (same as GetAliveZombieChow).
+    Unit* GluthNearby()
+    {
+        GuidVector npcs = *context->GetValue<GuidVector>("nearest npcs");
+        for (ObjectGuid const& g : npcs)
+        {
+            Unit* u = botAI->GetUnit(g);
+            if (u && u->IsAlive() && u->GetEntry() == NPC_GLUTH)
+                return u;
+        }
+        return nullptr;
+    }
+    // Best available Gluth pointer: the threat-cached one if we have it, else the
+    // room scan. Lets a chow handler position off the boss without first hitting
+    // him (the old find-target-only path forced that hit → the pull aggro-steal).
+    Unit* BossAnyway() { return _unit ? _unit : GluthNearby(); }
+    // True for the whole encounter, from the pull, regardless of who has threat
+    // (instance boss state — threat-independent, like FourHorsemen::EncounterEngaged).
+    bool GluthEngaged()
+    {
+        InstanceScript* instance = bot->GetInstanceScript();
+        return instance && instance->GetBossState(BOSS_GLUTH_ENCOUNTER) == IN_PROGRESS;
+    }
+
+    // Is `member` one of the designated zombie kiters? 25-man only; the first
+    // KITERS_PER_CLASS *bot* hunters and the first KITERS_PER_CLASS *bot* mages.
+    // Ranked by GUID among bots of the class (a stable total order), so the set
+    // never reshuffles tick-to-tick or on a death — and the human is never
+    // auto-assigned a kite slot (they can kite by hand if they want). 10-man
+    // always returns false, so its (already-working) positioning is untouched.
+    bool IsKiter(Player* member) const
+    {
+        if (!member || member->GetRaidDifficulty() != RAID_DIFFICULTY_25MAN_NORMAL)
+            return false;
+        uint8 cls = member->getClass();
+        if (cls != CLASS_HUNTER && cls != CLASS_MAGE)
+            return false;
+        Group* group = member->GetGroup();
+        if (!group)
+            return false;
+        uint32 ahead = 0;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* m = ref->GetSource();
+            if (!m || m == member)
+                continue;
+            if (!GET_PLAYERBOT_AI(m))  // human is never required to kite
+                continue;
+            if (m->getClass() != cls)
+                continue;
+            if (m->GetGUID() < member->GetGUID())
+                ++ahead;
+        }
+        return ahead < KITERS_PER_CLASS;
+    }
+    // Is `member` an off-tank assigned to the chow (25-man only)? The main tank
+    // stays on Gluth; the assist tanks go back to the SW and tank/kite the chow.
+    // 10-man returns false, so its assist tanks keep tanking the boss as before.
+    bool IsZombieOffTank(Player* member) const
+    {
+        if (!member || member->GetRaidDifficulty() != RAID_DIFFICULTY_25MAN_NORMAL)
+            return false;
+        if (botAI->IsMainTank(member))
+            return false;
+        return botAI->IsAssistTankOfIndex(member, 0) || botAI->IsAssistTankOfIndex(member, 1);
+    }
+    // Alive Zombie Chow the bot can currently see, by entry (more robust than
+    // the localized name). "nearest npcs" reaches far enough for a hunter to
+    // spot leaks heading for the boss across the room.
+    std::vector<Unit*> GetAliveZombieChow()
+    {
+        std::vector<Unit*> chow;
+        GuidVector npcs = *context->GetValue<GuidVector>("nearest npcs");
+        for (ObjectGuid const& g : npcs)
+        {
+            Unit* u = botAI->GetUnit(g);
+            if (u && u->IsAlive() && u->GetEntry() == NPC_ZOMBIE_CHOW)
+                chow.push_back(u);
+        }
+        return chow;
+    }
+    // True while the raid should stop kiting and burn the chow: Gluth is casting
+    // Decimate, or chow are already at the post-Decimate ~5% and sprinting him
+    // (he heals 5% of max HP for every chow he eats, so they must die first).
+    bool InDecimateBurn(std::vector<Unit*> const& chow)
+    {
+        if (BeforeDecimate())
+            return true;
+        for (Unit* z : chow)
+            if (z && z->GetHealthPct() <= decimatedZombiePct)
+                return true;
+        return false;
+    }
 
 private:
     void Reset()
@@ -688,6 +833,38 @@ public:
     // healers haven't settled yet — so bots pop their personal damage-reduction
     // cooldowns during this opening window.
     static constexpr uint32 OPENING_WINDOW_MS = 6000;
+    // --- Back phase (the front melee pair is dead; the raid collapses onto the
+    // two stationary casters Lady Blaumeux + Sir Zeliek) ---------------------
+    // Mirror of naxxramas.h ids. That header isn't on the playerbots include
+    // path, so we duplicate the few values we need; they're stable instance
+    // constants. BOSS_HORSEMAN is the encounter index used for GetBossState();
+    // DATA_*_BOSS look the creatures up by GUID from the instance script so a
+    // bot can find a horseman it has NEVER threatened — the threat-based
+    // "find target" returns null for, say, a front DPS that only ever hit
+    // Thane/Baron, which left it idle once the front pair died (it could not
+    // acquire Lady/Sir 100+y away across the room). NPC entries identify which
+    // caster a unit is (→ which Mark spell it applies).
+    static constexpr uint32 BOSS_HORSEMAN = 12;
+    static constexpr uint32 DATA_BARON_RIVENDARE_BOSS = 107;
+    static constexpr uint32 DATA_SIR_ZELIEK_BOSS = 108;
+    static constexpr uint32 DATA_LADY_BLAUMEUX_BOSS = 109;
+    static constexpr uint32 DATA_THANE_KORTHAZZ_BOSS = 110;
+    static constexpr uint32 NPC_SIR_ZELIEK = 16063;
+    static constexpr uint32 NPC_LADY_BLAUMEUX = 16065;
+    // Switch casters once this bot reaches this many stacks of the current
+    // caster's Mark — i.e. before the 4th application (per-hit damage spikes
+    // 1500 at 3 stacks → 4000 at 4; see spell_four_horsemen_mark_aura). Running
+    // to the *other* caster (~70y away, outside the first's 45y Mark aura) sheds
+    // the stack while keeping DPS uptime, instead of parking at a dead spot.
+    static constexpr uint32 MARK_SWITCH_STACKS = 3;
+    // Minimum time committed to a caster after a switch, so a bot that arrives
+    // still carrying a high (not-yet-decayed) stack of the new caster's Mark
+    // doesn't immediately bounce back — that would be a run-back-and-forth dance.
+    static constexpr uint32 BACK_SWITCH_MIN_DWELL_MS = 12000;
+    // Rough room center; back-phase home spots are fanned on the arc of each
+    // caster that faces this point, so melee stack on the open (inward) side and
+    // never path through the boss or into the wall behind it.
+    const std::pair<float, float> roomCenter = {2528.0f, -2957.0f};
     FourHorsemenBossHelper(PlayerbotAI* botAI) : AiObject(botAI) {}
     bool UpdateBossAI()
     {
@@ -715,6 +892,8 @@ public:
         _lady = nullptr;
         _combat_start_ms = 0;
         posToGo = 0;
+        _backBossCommit = ObjectGuid::Empty;
+        _lastSwitchMs = 0;
     }
     // 0-based rank of `bot` among same-role *bot* group members by item level
     // (highest first), ties broken by lower GUID. The GUID tiebreak makes this a
@@ -985,11 +1164,143 @@ public:
         return {vzX + dx / len * step, vzY + dy / len * step};
     }
 
+    // --- Instance-script lookups (threat-independent) -----------------------
+    // True while the Four Horsemen encounter is actually in progress. Gates the
+    // back-phase logic so a bot fighting another Naxx wing never picks up the
+    // idle horsemen, and so nothing fires before the pull.
+    bool EncounterEngaged()
+    {
+        InstanceScript* instance = bot->GetInstanceScript();
+        return instance && instance->GetBossState(BOSS_HORSEMAN) == IN_PROGRESS;
+    }
+    // The horseman behind a DATA_*_BOSS id if it's alive, else null. Uses the
+    // instance script, so it works regardless of whether THIS bot has ever
+    // threatened that horseman (unlike "find target").
+    Unit* GetHorsemanAlive(uint32 dataId)
+    {
+        InstanceScript* instance = bot->GetInstanceScript();
+        if (!instance)
+            return nullptr;
+        Creature* c = instance->GetCreature(dataId);
+        return (c && c->IsAlive()) ? c : nullptr;
+    }
+    Unit* ThaneAlive() { return GetHorsemanAlive(DATA_THANE_KORTHAZZ_BOSS); }
+    Unit* BaronAlive() { return GetHorsemanAlive(DATA_BARON_RIVENDARE_BOSS); }
+    Unit* LadyAlive() { return GetHorsemanAlive(DATA_LADY_BLAUMEUX_BOSS); }
+    Unit* SirAlive() { return GetHorsemanAlive(DATA_SIR_ZELIEK_BOSS); }
+    // The two melee bosses (tanked in the front corners) are both dead → the
+    // raid should collapse onto the back casters. Threat-independent so the
+    // whole front team detects it, not just bots that touched the casters.
+    bool FrontPairDead() { return !ThaneAlive() && !BaronAlive(); }
+
+    // Which Mark spell a back caster applies, identified by entry (the Mark ids
+    // are the same on 10/25, cast self-AoE by the boss — see boss_four_horsemen).
+    uint32 MarkSpellForBoss(Unit* boss)
+    {
+        if (!boss)
+            return 0;
+        switch (boss->GetEntry())
+        {
+            case NPC_LADY_BLAUMEUX:
+                return NaxxSpellIds::MarkOfBlaumeux;
+            case NPC_SIR_ZELIEK:
+                return NaxxSpellIds::MarkOfZeliek;
+            default:
+                return 0;
+        }
+    }
+    uint32 MarkStacksFromBoss(Player* p, Unit* boss)
+    {
+        uint32 spellId = MarkSpellForBoss(boss);
+        if (!spellId)
+            return 0;
+        Aura* a = p->GetAura(spellId);
+        return a ? a->GetStackAmount() : 0;
+    }
+    // Back-phase target selection: ping-pong between Lady and Sir to keep this
+    // bot's Mark stacks low. Stays committed to one caster until its Mark hits
+    // MARK_SWITCH_STACKS (and at least BACK_SWITCH_MIN_DWELL_MS have passed),
+    // then commits to the other. Commit + dwell give hysteresis so bots don't
+    // oscillate every tick. `lady`/`sir` are the alive units (null if dead).
+    Unit* PickBackBoss(Player* p, Unit* lady, Unit* sir)
+    {
+        if (!lady && !sir)
+        {
+            _backBossCommit = ObjectGuid::Empty;
+            return nullptr;
+        }
+        if (lady && !sir)
+        {
+            _backBossCommit = lady->GetGUID();
+            return lady;
+        }
+        if (sir && !lady)
+        {
+            _backBossCommit = sir->GetGUID();
+            return sir;
+        }
+
+        Unit* committed = nullptr;
+        if (_backBossCommit == lady->GetGUID())
+            committed = lady;
+        else if (_backBossCommit == sir->GetGUID())
+            committed = sir;
+
+        if (!committed)
+        {
+            // First commit (or stale GUID): start on the one we carry fewer
+            // stacks of.
+            committed = (MarkStacksFromBoss(p, lady) <= MarkStacksFromBoss(p, sir)) ? lady : sir;
+            _backBossCommit = committed->GetGUID();
+            _lastSwitchMs = getMSTime();
+            return committed;
+        }
+
+        uint32 dwell = _lastSwitchMs ? getMSTime() - _lastSwitchMs : BACK_SWITCH_MIN_DWELL_MS;
+        if (dwell >= BACK_SWITCH_MIN_DWELL_MS && MarkStacksFromBoss(p, committed) >= MARK_SWITCH_STACKS)
+        {
+            committed = (committed == lady) ? sir : lady;
+            _backBossCommit = committed->GetGUID();
+            _lastSwitchMs = getMSTime();
+        }
+        return committed;
+    }
+    // Where a back-phase DPS should stand to hit `boss`: a fixed per-bot slot on
+    // the inward-facing arc (so bots fan out instead of stacking on one point,
+    // and stay on the open side of the boss), at melee reach or ~25y for ranged.
+    // If the chosen point sits in a Void Zone, the angle is rotated around the
+    // boss until it's clear — so the spot is puddle-free by construction. That's
+    // what stops the old run-around: the previous back logic just Attack()ed,
+    // which yanked melee straight back into Lady's puddle after every dodge.
+    std::pair<float, float> BackPhaseHomePos(Player* p, Unit* boss, bool ranged)
+    {
+        float reach = ranged ? 25.0f : (boss->GetCombatReach() + p->GetCombatReach() + 1.0f);
+        uint32 slot = botAI->GetGroupSlotIndex(p);
+        float base = std::atan2(roomCenter.second - boss->GetPositionY(),
+                                roomCenter.first - boss->GetPositionX());
+        float spread = ranged ? 0.18f : 0.30f;
+        int sign = (slot % 2 == 0) ? 1 : -1;
+        float angle = base + sign * spread * float((slot + 1) / 2);
+
+        for (int i = 0; i < 6; ++i)
+        {
+            float px = boss->GetPositionX() + std::cos(angle) * reach;
+            float py = boss->GetPositionY() + std::sin(angle) * reach;
+            if (!FindVoidZoneAt(px, py))
+                return {px, py};
+            angle += 0.6f;  // ~34 deg steps around the boss until clear of puddles
+        }
+        return {boss->GetPositionX() + std::cos(base) * (reach + 6.0f),
+                boss->GetPositionY() + std::sin(base) * (reach + 6.0f)};
+    }
+
 protected:
     Unit* _sir = nullptr;
     Unit* _lady = nullptr;
     uint32 _combat_start_ms = 0;
     int posToGo = 0;
+    ObjectGuid _backBossCommit = ObjectGuid::Empty;
+    uint32 _lastSwitchMs = 0;
 };
 // Maexxna's Web Wrap is a stationary NPC (entry 16486, NullCreatureAI) spawned
 // at one of 7 wall positions when a non-tank gets webbed. It stuns the victim

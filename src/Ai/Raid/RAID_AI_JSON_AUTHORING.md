@@ -56,7 +56,8 @@ Tuning loop: `.rjson on` → pull → edit JSON → `.rjson reload` → re-pull.
       "trigger": <TRIGGER>,         // exactly one
       "actions": [ <ACTION>, ... ]  // one or more, each with its own priority
     }
-  ]
+  ],
+  "suppress": [ ... ]              // optional: data-driven multipliers (see "Suppress")
 }
 ```
 
@@ -89,6 +90,43 @@ role and phase. **Evaluated per bot**, so one rule fans out correctly.
 **Role tokens:** `all`, `maintank`, `offtank`, `tank`, `notmaintank`, `nontank`,
 `ranged`, `melee`, `healer`, `dps`. Combine with commas, e.g. `"ranged,healer"`.
 
+### Trigger shape `pre_cast_window` (→ `JsonPreCastWindowTrigger`)
+Fires in the short window *before* a boss's **periodic** cast, so externals /
+defensives can be pre-applied and carry through the hit — the case reactive
+healing can't cover because the raid (healers included) is stunned, e.g.
+Maexxna's 40s Web Spray. The boss exposes no readable timer, so this **predicts**
+from a fixed cadence and **re-anchors** every time the cast is actually observed,
+staying locked to the real rhythm instead of drifting. Evaluated per bot, with
+its own predicted clock.
+
+| Field          | Type        | Default      | Meaning                                                              |
+|----------------|-------------|--------------|----------------------------------------------------------------------|
+| `boss`         | string      | file `boss`  | Creature name to detect (engaged gate; resets the clock when gone).  |
+| `spell`        | string\|int | (none)       | Anchor cast for re-anchoring — name or spell id. Observed as the boss mid-cast **or** its aura already on the bot (reliable for instant casts). Omit for a pure clock. |
+| `interval`     | int (ms)    | **required** | Cadence between casts.                                               |
+| `first_at`     | int (ms)    | `interval`   | Offset of the first cast from combat start.                          |
+| `lead`         | int (ms)    | `4000`       | Open the window this long *before* the predicted cast.               |
+| `tail`         | int (ms)    | `6000`       | Hold the window open this long *after* (covers a delayed cast).      |
+| `require_aura` | string      | (none)       | Optional phase gate: only fire while this aura is on the boss (e.g. `frenzy`). |
+| `role`         | string      | (all)        | Optional role filter (same comma-list tokens as `encounter_active`). |
+
+```json
+{ "shape": "pre_cast_window",
+    "boss": "maexxna", "spell": 29484, "interval": 40000, "first_at": 40000,
+    "lead": 4000, "tail": 6000, "require_aura": "frenzy", "role": "maintank,healer" }
+```
+
+> **Trigger fields go at the trigger top level — NOT in a `"params"` object.**
+> Only *action* shapes nest tunables under `params`; trigger shapes
+> (`encounter_active`, `pre_cast_window`) read their fields directly off the
+> trigger object. Wrapping a trigger in `params` makes the loader miss every
+> field — e.g. `interval` reads back as `0` → `pre_cast_window needs a non-zero
+> 'interval' (ms)`.
+
+Pair it with class-spell / external actions (by name) that self-gate on
+knowability + cooldown, so listing several under one rule fires exactly the ones
+the present bots can cast — same idiom as Four Horsemen's "opening defensive".
+
 ### Action shapes
 
 | Shape             | Class                       | `params`                                  | Behavior |
@@ -96,17 +134,57 @@ role and phase. **Evaluated per bot**, so one rule fans out correctly.
 | `orbit_point`     | `JsonOrbitPointAction`      | `x, y, radius, segments, clockwise`       | Continuously walk the ring around (x,y) — a real orbit/kite. |
 | `stack_point`     | `JsonStackPointAction`      | `x, y, radius`                            | Move to (x,y) and stay within `radius` (tight raid stack). |
 | `spread`          | `JsonSpreadAction`          | `radius`, `min_interval` (ms, default 3000) | Move away from the nearest **other ranged/healer** within `radius`. Ignores the melee/tank stack and repositions at most once per `min_interval` so casters aren't interrupted. Yields when clear. |
-| `attack_target`   | `JsonAttackTargetAction`    | `target` (default file `boss`)            | Focus the named creature. Yields when already on it. |
-| `attack_priority` | `JsonAttackPriorityAction`  | `adds` (string or array), `boss` (default file `boss`) | Focus the lowest-HP living add whose name is in `adds`; fall back to `boss` when none are up. "Kill adds first, then boss." |
+| `attack`          | `JsonAttackAction`          | `targets` (name/entry, string or array), `boss` (fallback, default file `boss`), `detect` (`threat`\|`nearest`), `select` (`lowest_hp`\|`nearest`) | Pick one creature to attack — the lowest-HP / nearest match from `targets`, falling back to `boss` when none are alive. **`detect`** = `threat` scans the attacker/threat list (default); `nearest` scans nearby NPCs so **off-threat** objects are visible (Web Wrap cocoons, un-aggroed adds). **`select`** = `lowest_hp` (default when `detect:threat`) is "kill adds first"; `nearest` (default when `detect:nearest`) is closest-first. Matches by name **or** entry id; sticks to its pick until it dies (no cast-cancel thrash); yields when already on target. To just focus one creature (e.g. the boss), name it in `targets`. Merges the former `attack_target`, `attack_priority` (`threat`+`lowest_hp`) and `attack_nearest` (`nearest`+`nearest`). |
 | `tank_adds`       | `JsonTankAddsAction`        | `add`, `boss` (default file `boss`)       | Off-tank (assist-tank #0) gathers every living add named `add` and drags it onto the main tank / boss. attack → taunt → reposition. |
+| `timed_safe_zone` | `JsonTimedSafeZoneAction`   | `zones` (array of `[x,y]`), `pattern` (array of zone indices), `z`, `first_at` (ms), `interval` (ms), `hold` (bool), `cast_while_moving` (bool), `tolerance` (default 5.0) | **A6 eruption dance** as data. The room has fixed safe `zones`; on a deterministic clock one zone after another is the only safe spot. Predicts the current safe zone (`pattern[k]` where `k` counts eruptions from `first_at`/`interval`) and stands on it. The generic form of `HeiganDanceAction`. `hold:true` = own the tick even when parked (tight cadence, no casting); `hold:false` = yield once parked so rotations run between eruptions. `cast_while_moving:true` = while **en route**, yield the tick so the bot's rotation fires INSTANTS as it relocates (the engine refuses cast-time spells while moving, so only instants come out) — **requires a `suppress` rule** (below) zeroing the movement-hijackers, else they grab the yielded tick. Per-bot clock auto-anchors on first run and re-anchors after a long idle gap (the rule going dormant across the *other* phase), so gate each phase with its own rule + cadence. |
 
 ```json
 { "shape": "stack_point",     "params": { "x": 3272.49, "y": -3476.27, "radius": 4.0 }, "priority": 3 }
 { "shape": "spread",          "params": { "radius": 8.0, "min_interval": 3000 }, "priority": 2 }
-{ "shape": "attack_target",   "params": { "target": "anub'rekhan" }, "priority": 1 }
-{ "shape": "attack_priority", "params": { "adds": "crypt guard", "boss": "anub'rekhan" }, "priority": 1 }
+{ "shape": "attack",          "params": { "targets": "anub'rekhan" }, "priority": 1 }
+{ "shape": "attack",          "params": { "targets": "crypt guard", "boss": "anub'rekhan" }, "priority": 1 }
+{ "shape": "attack",          "params": { "targets": 16486, "detect": "nearest", "boss": "maexxna" }, "priority": 2 }
 { "shape": "tank_adds",       "params": { "add": "crypt guard", "boss": "anub'rekhan" }, "priority": 2 }
+{ "shape": "timed_safe_zone", "params": { "zones": [[2756.0,-3704.0],[2794.9,-3668.1]], "pattern": [3,2,1,0,1,2], "z": 276.54, "first_at": 7000, "interval": 4000, "hold": true }, "priority": 32 }
 ```
+
+> **Priority note for `timed_safe_zone` (and any movement shape that must beat
+> avoid-aoe):** the generic `"avoid aoe"` action sits at `ACTION_EMERGENCY = 90`,
+> above `ACTION_RAID` (60). To win the relevance race outright, wire survival
+> movement at **`priority ≥ 31`** (offset on `ACTION_RAID`=60 → relevance ≥ 91 >
+> 90). The loader does not clamp priority. A shape that holds the tick while it
+> owns movement then beats everything below 91. When you instead want the shape to
+> **yield** (e.g. `cast_while_moving`), priority alone isn't enough — yielding
+> re-exposes the hijackers — so pair it with a `suppress` rule (below).
+
+---
+
+## Suppress — data-driven multipliers (the `InitMultipliers` analog)
+
+The hand-tuned C++ strategies install **multipliers** that zero an action's
+relevance during a phase (e.g. `HeiganDanceMultiplier` zeros `"avoid aoe"` so the
+dance wins). `json-raid` exposes the same capability as data: a top-level
+`suppress` array, sibling to `rules`.
+
+```json
+"suppress": [
+  { "trigger": { "shape": "encounter_active", "boss": "heigan the unclean" },
+    "actions": ["avoid aoe", "reach spell", "combat formation move", "flee"] }
+]
+```
+
+Each entry: while its `trigger` (resolved exactly like a rule trigger — a `name`
+or a shape) is active **for that bot**, every listed action **name** has its
+relevance forced to 0, so it can't be selected. Names are matched against the
+action's `getName()` — use the registered name (`"avoid aoe"`, `"reach spell"`,
+`"reach melee"`, `"combat formation move"`, `"flee"`, …).
+
+The primary use: let a movement shape **yield the tick for instant casts**
+(`cast_while_moving`) without the eruption-dodge / reach / formation actions
+grabbing the yielded tick and dragging the bot off its route. Pick the suppress
+list deliberately — e.g. leave `"reach melee"` *un*-suppressed if melee still need
+to close on a tanked boss during the phase. (This also lets a Level-1 port carry a
+multiplier its C++ original relied on, like four_horsemen.)
 
 ---
 
@@ -138,7 +216,7 @@ tightly in the center.
   "boss": "anub'rekhan",
   "rules": [
     { "trigger": { "shape": "encounter_active", "role": "maintank",    "boss_aura": "locust swarm", "aura_present": false },
-      "actions": [ { "shape": "attack_target", "params": { "target": "anub'rekhan" }, "priority": 1 } ] },
+      "actions": [ { "shape": "attack", "params": { "targets": "anub'rekhan" }, "priority": 1 } ] },
 
     { "trigger": { "shape": "encounter_active", "role": "maintank",    "boss_aura": "locust swarm", "aura_present": true },
       "actions": [ { "shape": "orbit_point", "params": { "x": 3272.49, "y": -3476.27, "radius": 45.0, "segments": 16, "clockwise": true }, "priority": 3 } ] },
@@ -153,7 +231,7 @@ tightly in the center.
       "actions": [ { "shape": "spread", "params": { "radius": 8.0 }, "priority": 2 } ] },
 
     { "trigger": { "shape": "encounter_active", "role": "dps",         "boss_aura": "locust swarm", "aura_present": false },
-      "actions": [ { "shape": "attack_priority", "params": { "adds": "crypt guard", "boss": "anub'rekhan" }, "priority": 1 } ] }
+      "actions": [ { "shape": "attack", "params": { "targets": "crypt guard", "boss": "anub'rekhan" }, "priority": 1 } ] }
   ]
 }
 ```
@@ -170,7 +248,12 @@ two `aura_present:true` rules take over.
 Shapes wire and parameterize; they don't implement novel logic. Keep these in C++
 and reference them by name (Level 1):
 
-- Phase clocks / predicted timers (Heigan dance, Sapphiron flight, Thaddius swaps).
+- Positional phase clocks where the safe spot is **reactive or random** (Sapphiron
+  flight — dodge wherever the ice blocks land; Thaddius polarity swaps — keyed on
+  the bot's own debuff). The *movement* is bespoke. (Two special cases are now
+  generic: a fixed-pattern timed safe zone like the **Heigan dance** is
+  `timed_safe_zone`; a periodic *cast* you only need to pre-mitigate is
+  `pre_cast_window`.)
 - Multi-actor relays / assignments (Four Horsemen corner rotation, Vashj/Kael,
   Yogg, Lich King, Mimiron, Razuvious mind-control).
 - Anything reading boss script internals (channel state, `_currentSection`).

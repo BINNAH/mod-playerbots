@@ -7,6 +7,7 @@
 
 #include "AiFactory.h"
 #include "ChatHelper.h"
+#include "Group.h"
 #include "GuildTaskMgr.h"
 #include "Item.h"
 #include "LootObjectStack.h"
@@ -189,9 +190,11 @@ static int32 MainArmorSubclassFor(uint8 clazz, uint32 level)
     return -1;
 }
 
-// True if the item carries a dedicated tanking/mitigation stat. Used to keep tank-role bots
-// from rolling NEED on pure-DPS armor of their own type (e.g. a bear grabbing an agility/AP
-// leather chest). Pieces without any of these fall through to a GREED roll instead.
+// True if the item carries a dedicated tanking/mitigation stat. Used as the tank-vs-DPS
+// itemization test for body armor: pieces with one of these are tank gear, pieces without are
+// DPS/healer gear. Lets the role gate keep a tank off pure-DPS armor (e.g. a bear grabbing an
+// agility/AP leather chest) AND keep a DPS/healer off tank armor of the same type. Mismatched
+// pieces fall through to a GREED roll instead of a NEED.
 static bool HasTankMitigationStat(ItemTemplate const* proto)
 {
     for (uint8 i = 0; i < MAX_ITEM_PROTO_STATS; ++i)
@@ -208,6 +211,30 @@ static bool HasTankMitigationStat(ItemTemplate const* proto)
             case ITEM_MOD_BLOCK_VALUE:
                 return true;
         }
+    }
+    return false;
+}
+
+// Whether the bot's CURRENT build is a tank: an active tank strategy, or a tank spec/talents
+// (prot warr/pala, blood DK, bear druid). This reflects what the bot is doing right now and flips
+// when we respec an off-tank to DPS -- so it's the right test for "should this bot be kept off
+// pure-DPS gear", which only applies while it's actually tanking.
+static bool IsBuiltAsTank(Player* bot)
+{
+    return PlayerbotAI::IsTank(bot) || PlayerbotAI::IsTank(bot, true);
+}
+
+// Whether the raid has flagged the bot Main Tank (the shield icon). Unlike spec/strategy this
+// persists across respecs, so it stays set while an assigned off-tank is temporarily DPS-specced
+// -- letting it keep rolling on tank gear even on fights where it's DPSing.
+static bool HasMainTankAssignment(Player* bot)
+{
+    if (Group* group = bot->GetGroup())
+    {
+        ObjectGuid const guid = bot->GetGUID();
+        for (auto const& slot : group->GetMemberSlots())
+            if (slot.guid == guid)
+                return (slot.flags & MEMBER_FLAG_MAINTANK) != 0;
     }
     return false;
 }
@@ -240,13 +267,31 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
         if (mainType >= 0 && itemProto->SubClass != (uint32)mainType)
             return ITEM_USAGE_NONE;
 
-        // Tank role: only treat dedicated tank pieces (carrying a mitigation stat) as upgrades,
-        // so a tank doesn't NEED pure-DPS armor of its own type. This is intentionally a role +
-        // stat rule, not a spec-weight one -- a bear's stamina/agility weights rate a DPS leather
-        // chest as a huge upgrade, which is why scoring alone won't stop it. Non-mitigation pieces
-        // fall through to a GREED roll, handing them to DPS who actually want them.
-        if (PlayerbotAI::IsTank(bot) && !HasTankMitigationStat(itemProto))
-            return ITEM_USAGE_NONE;
+        // Tank vs. DPS itemization: a piece carrying a dedicated mitigation stat (defense/dodge/
+        // parry/block) is a tank item; one without is a DPS/healer item of that armor type. Match
+        // the bot to the piece so neither side out-NEEDs the other on gear meant for the opposite
+        // role. This is a role + stat rule, not a spec-weight one: a bear's stamina/agility weights
+        // rate a DPS leather chest as a huge upgrade (and a cat's weights rate a tanky piece highly
+        // too), so scoring alone won't separate them. The mismatched side falls through to a GREED.
+        //
+        // The two directions use different role tests on purpose:
+        //  - Tank gear is gated by tank ELIGIBILITY (built-as-tank now OR raid-assigned Main Tank),
+        //    so an assigned off-tank keeps getting tank gear even on fights where it's DPS-specced.
+        //  - DPS gear is gated only by the CURRENT build, so that same off-tank may NEED DPS gear
+        //    while it's actually DPS-specced -- it's DPSing this fight and still uses the gear,
+        //    and naturally earns it less often the more fights it spends tanking.
+        bool const builtAsTank = IsBuiltAsTank(bot);
+        bool const tankEligible = builtAsTank || HasMainTankAssignment(bot);
+
+        if (HasTankMitigationStat(itemProto))
+        {
+            if (!tankEligible)
+                return ITEM_USAGE_NONE;  // DPS/healer shouldn't NEED tank armor of its own type
+        }
+        else if (builtAsTank)
+        {
+            return ITEM_USAGE_NONE;  // a bot actively built as a tank shouldn't NEED pure-DPS armor
+        }
     }
 
     Item* pItem = Item::CreateItem(itemProto->ItemId, 1, bot, false, 0, true);

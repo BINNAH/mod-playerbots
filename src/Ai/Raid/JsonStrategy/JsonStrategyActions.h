@@ -17,6 +17,9 @@
 #include "MovementActions.h"        // RotateAroundTheCenterPointAction, MoveInsideAction
 #include "NamedObjectContext.h"     // Qualified
 
+#include <cstdint>
+#include <vector>
+
 // Shape A2 "orbit_point": continuously walk the ring around (x, y).
 // Qualifier: "x,y,radius,segments,clockwise".
 class JsonOrbitPointAction : public RotateAroundTheCenterPointAction, public Qualified
@@ -71,39 +74,37 @@ private:
     bool _valid = false;
 };
 
-// Shape "attack_priority": focus the lowest-health living add whose name is in
-// `adds` (comma-list) if any are up, otherwise fall back to `boss`. Yields when
-// already on the right target. The generic "kill adds first, then boss" pattern.
-// Qualifier: "adds=<name[,name]>|boss=<bossname>".
-class JsonAttackPriorityAction : public AttackAction, public Qualified
+// Shape "attack": pick one creature from a candidate set and attack it, falling
+// back to `boss` when none are up. Generalizes the former attack_target,
+// attack_priority and attack_nearest shapes through two knobs:
+//   detect = "threat"  -> scan the threat / "attackers" list (default).
+//          = "nearest" -> scan nearby NPCs, so OFF-THREAT objects are visible
+//                         (e.g. Maexxna's Web Wrap cocoons, freshly-spawned adds
+//                         no one has aggro on yet).
+//   select = "lowest_hp" -> focus the lowest-health match (default for detect
+//                           "threat"): the "kill adds first" pattern.
+//          = "nearest"   -> focus the closest match (default for detect
+//                           "nearest"): grab the cocoon nearest to free fastest.
+// Candidates match `targets` (comma-list) by case-insensitive NAME or numeric
+// ENTRY id. Sticks to the current pick while it's still a live match (no thrash
+// that would cancel in-flight casts), then falls back to `boss`. Yields when
+// already on the right target. With `targets` empty it is just "attack the boss".
+// Qualifier: "targets=<name-or-entry[,...]>|boss=<name>|detect=<..>|select=<..>".
+class JsonAttackAction : public AttackAction, public Qualified
 {
 public:
-    JsonAttackPriorityAction(PlayerbotAI* ai) : AttackAction(ai, "json attackpriority") {}
+    JsonAttackAction(PlayerbotAI* ai) : AttackAction(ai, "json attackpick") {}
 
     void Qualify(std::string const qual) override;
     bool Execute(Event event) override;
-    bool isUseful() override { return !(_addsCsv.empty() && _boss.empty()); }
-    std::string const getName() override { return "json attackpriority::" + qualifier; }
+    bool isUseful() override { return !(_targetsCsv.empty() && _boss.empty()); }
+    std::string const getName() override { return "json attackpick::" + qualifier; }
 
 private:
-    std::string _addsCsv;
+    std::string _targetsCsv;
     std::string _boss;
-};
-
-// Shape "attack_target": attack the named creature (e.g. focus the boss).
-// No-ops (returns false) when already on that target. Qualifier: "<name>".
-class JsonAttackTargetAction : public AttackAction, public Qualified
-{
-public:
-    JsonAttackTargetAction(PlayerbotAI* ai) : AttackAction(ai, "json attack") {}
-
-    void Qualify(std::string const qual) override { Qualified::Qualify(qual); _target = qual; }
-    bool Execute(Event event) override;
-    bool isUseful() override { return !_target.empty(); }
-    std::string const getName() override { return "json attack::" + qualifier; }
-
-private:
-    std::string _target;
+    bool _nearestDetect = false;  // scan nearby NPCs (off-threat) vs the threat list
+    bool _nearestSelect = false;  // pick the closest match vs the lowest-health match
 };
 
 // Shape "tank_adds": off-tank (assist-tank index 0) picks up every living add
@@ -123,6 +124,60 @@ public:
 private:
     std::string _addName;
     std::string _bossName;
+};
+
+// Shape A6 "timed_safe_zone": the eruption-dance pattern. The encounter splits a
+// room into fixed `zones`; on a deterministic clock one zone after another is the
+// only safe place to stand. Given that geometry as data, predict which zone is
+// safe right now and stand on it -- the generic form of HeiganDanceAction (and a
+// fit for any fixed-pattern "safe zone at time T" mechanic).
+//
+//   zones    : flat "x1,y1,x2,y2,..." -- the safe-spot centers.
+//   pattern  : "i0,i1,..." -- index into `zones` for the K-th eruption (a period
+//              equal to the list length; e.g. Heigan's triangle wave 3,2,1,0,1,2).
+//   z        : floor height shared by every zone.
+//   first_at : ms from phase start to the first eruption.
+//   interval : ms between eruptions thereafter.
+//   hold     : 1 -> own the tick even when parked on the safe zone (tight cadence,
+//              e.g. Heigan fast phase -- no casting, relocate instantly every tick).
+//              0 -> yield once parked so DPS/heal rotations run between eruptions.
+//   cw       : "cast while moving". 1 -> while EN ROUTE, yield the tick instead of
+//              owning it, so the bot's rotation fires INSTANTS as it relocates (the
+//              engine refuses cast-time spells while moving, so only instants come
+//              out -- no risk of rooting into an eruption). Requires a companion
+//              json-raid `suppress` rule zeroing the movement-hijackers (avoid aoe /
+//              reach spell / combat formation move / flee) for the dance's phase, or
+//              they grab the yielded tick. 0 (default) -> hold the tick while moving.
+//   tol      : in-position tolerance (default 5.0).
+//
+// The phase clock is per-bot state: anchored on first run and re-anchored after a
+// long idle gap (the rule going dormant across the other phase), so each instance
+// tracks its own phase. WHICH phase / WHO dances is the rule's trigger's job; this
+// action just needs the cadence for the phase it's wired under. Qualifier:
+// "zones=..|pattern=..|z=..|first=..|interval=..|hold=..|tol=..".
+class JsonTimedSafeZoneAction : public MovementAction, public Qualified
+{
+public:
+    JsonTimedSafeZoneAction(PlayerbotAI* ai) : MovementAction(ai, "json safezone") {}
+
+    void Qualify(std::string const qual) override;
+    bool Execute(Event event) override;
+    bool isUseful() override { return _valid; }
+    std::string const getName() override { return "json safezone::" + qualifier; }
+
+private:
+    std::vector<float> _zones;     // flat x,y pairs
+    std::vector<uint8> _pattern;   // safe-zone index per eruption
+    float _z = 0.0f;
+    uint32 _firstAt = 0;
+    uint32 _interval = 0;
+    bool _hold = false;
+    bool _castWhileMoving = false;
+    float _tol = 5.0f;
+    bool _valid = false;
+    // Per-bot phase clock (see Execute).
+    uint32 _phaseStartMs = 0;
+    uint32 _lastSeenMs = 0;
 };
 
 #endif

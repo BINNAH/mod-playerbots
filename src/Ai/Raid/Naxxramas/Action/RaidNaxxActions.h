@@ -215,6 +215,23 @@ protected:
     FourHorsemenBossHelper helper;
 };
 
+// Back phase: the two front melee bosses (Thane + Baron) are dead, so the
+// surviving DPS/tanks collapse onto the stationary casters Lady Blaumeux and
+// Sir Zeliek. Drives them onto a back caster, ping-ponging between the two on
+// the Mark cadence (PickBackBoss) so stacks stay low, and parks them on a
+// stable, puddle-free home (BackPhaseHomePos) so they stop running around.
+// Fires for non-attractor, non-healer bots only (attractors keep soaking to
+// prevent the out-of-range punish; healers keep their existing park/bleed-off).
+class FourHorsemenBackPhaseAction : public AttackAction
+{
+public:
+    FourHorsemenBackPhaseAction(PlayerbotAI* ai) : AttackAction(ai, "four horsemen back phase"), helper(ai) {}
+    bool Execute(Event event) override;
+
+protected:
+    FourHorsemenBossHelper helper;
+};
+
 class FourHorsemenHealerBleedOffMarkAction : public MovementAction
 {
 public:
@@ -376,10 +393,23 @@ private:
     GluthBossHelper helper;
 };
 
-class GluthSlowdownAction : public Action
+class GluthSlowdownAction : public MovementAction
 {
 public:
-    GluthSlowdownAction(PlayerbotAI* ai) : Action(ai, "gluth slowdown"), helper(ai) {}
+    GluthSlowdownAction(PlayerbotAI* ai) : MovementAction(ai, "gluth slowdown"), helper(ai) {}
+    bool Execute(Event event) override;
+
+private:
+    GluthBossHelper helper;
+};
+
+// During the Decimate burn, non-kiter / non-off-tank DPS turn off the boss and
+// AoE down the low-HP (~5%) chow before they reach Gluth. High-HP chow are left
+// to the kiters/off-tanks. Outside the burn it does nothing (boss DPS resumes).
+class GluthBurnAddsAction : public AttackAction
+{
+public:
+    GluthBurnAddsAction(PlayerbotAI* ai) : AttackAction(ai, "gluth burn adds"), helper(ai) {}
     bool Execute(Event event) override;
 
 private:

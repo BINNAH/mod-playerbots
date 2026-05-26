@@ -261,8 +261,22 @@ float AnubrekhanGenericMultiplier::GetValue(Action* action)
 
 float FourHorsemenGenericMultiplier::GetValue(Action* action)
 {
-    Unit* boss = AI_VALUE2(Unit*, "find target", "sir zeliek");
-    if (!boss)
+    // Original scope: the back team (the soakers/back-healers, who carry threat
+    // on Sir/Lady) gets its movers suppressed throughout so it doesn't dance off
+    // the soak spots. The front team (tanks + front DPS) has NO threat on the
+    // casters, so this stays inactive for them during the front phase — they
+    // tank/DPS Thane & Baron on the stock AI, exactly as before.
+    bool active = AI_VALUE2(Unit*, "find target", "sir zeliek") != nullptr;
+
+    // Added scope: once the front pair is dead the whole front team collapses
+    // onto the casters and is driven by the back-phase action, so suppress its
+    // dance movers too. Healers are left out — they keep the stock reach-to-heal
+    // they rely on to cover the raid. (FrontPairDead is instance-based, so this
+    // is threat-independent; in the front phase it's false → no behavior change.)
+    if (!active && helper.EncounterEngaged() && helper.FrontPairDead() && !PlayerbotAI::IsHeal(bot))
+        active = true;
+
+    if (!active)
         return 1.0f;
 
     context->GetValue<bool>("neglect threat")->Set(true);
@@ -333,33 +347,62 @@ float FourHorsemenGenericMultiplier::GetValue(Action* action)
 
 float GluthGenericMultiplier::GetValue(Action* action)
 {
-    if (!helper.UpdateBossAI())
-        return 1.0f;
+    bool offTank = helper.IsZombieOffTank(bot);
+    bool kiter = helper.IsKiter(bot);
 
-    if ((dynamic_cast<DpsAssistAction*>(action) || dynamic_cast<TankAssistAction*>(action) ||
-         dynamic_cast<FleeAction*>(action) || dynamic_cast<CastDebuffSpellOnAttackerAction*>(action) ||
-         dynamic_cast<CastStarfallAction*>(action) || dynamic_cast<CombatFormationMoveAction*>(action)))
+    // Chow handlers (off-tanks + kiters) are driven entirely by GluthSlowdownAction
+    // and NEVER threaten Gluth — so the threat-gated block below (UpdateBossAI)
+    // would never govern them. Govern them here, threat-independently (instance
+    // boss state), from the pull. Without it they ran the stock rotation on the
+    // pull: the off-tanks charged Gluth and ripped aggro off the MT, and every
+    // handler fought Follow — a relevance-1 default that walks them toward the
+    // master while their hold/orbit MoveTo drags them back (the forward/back
+    // stutter). Note: taunts are deliberately NOT suppressed, so the mortal-wound
+    // tank-swap trigger (assist tank → "taunt spell") still works.
+    if ((helper.GluthEngaged() || helper.UpdateBossAI()) && (offTank || kiter))
     {
-        return 0.0f;
+        if (dynamic_cast<DpsAssistAction*>(action) || dynamic_cast<TankAssistAction*>(action) ||
+            dynamic_cast<FleeAction*>(action) || dynamic_cast<CombatFormationMoveAction*>(action) ||
+            dynamic_cast<FollowAction*>(action))
+            return 0.0f;
     }
-
-    if (botAI->IsMainTank(bot))
+    else
     {
-        Aura* aura = NaxxSpellIds::GetAnyAura(bot, {NaxxSpellIds::MortalWound10, NaxxSpellIds::MortalWound25});
-        if (!aura)
+        // Non-handlers (MT / ranged / melee / healers): the original threat-gated
+        // suppression. The pre-threat window (UpdateBossAI false) is left open so
+        // the MT and DPS can still make their initial engage on Gluth normally.
+        if (!helper.UpdateBossAI())
+            return 1.0f;
+
+        if (dynamic_cast<DpsAssistAction*>(action) || dynamic_cast<TankAssistAction*>(action) ||
+            dynamic_cast<FleeAction*>(action) || dynamic_cast<CastDebuffSpellOnAttackerAction*>(action) ||
+            dynamic_cast<CastStarfallAction*>(action) || dynamic_cast<CombatFormationMoveAction*>(action) ||
+            dynamic_cast<FollowAction*>(action))
         {
-            // Fallback to name for custom spell data.
-            aura = botAI->GetAura("mortal wound", bot, false, true);
+            return 0.0f;
         }
-        if (aura && aura->GetStackAmount() >= 5)
+
+        if (botAI->IsMainTank(bot))
         {
-            if (dynamic_cast<CastTauntAction*>(action) || dynamic_cast<CastDarkCommandAction*>(action) ||
-                dynamic_cast<CastHandOfReckoningAction*>(action) || dynamic_cast<CastGrowlAction*>(action))
+            Aura* aura = NaxxSpellIds::GetAnyAura(bot, {NaxxSpellIds::MortalWound10, NaxxSpellIds::MortalWound25});
+            if (!aura)
             {
-                return 0.0f;
+                // Fallback to name for custom spell data.
+                aura = botAI->GetAura("mortal wound", bot, false, true);
+            }
+            if (aura && aura->GetStackAmount() >= 5)
+            {
+                if (dynamic_cast<CastTauntAction*>(action) || dynamic_cast<CastDarkCommandAction*>(action) ||
+                    dynamic_cast<CastHandOfReckoningAction*>(action) || dynamic_cast<CastGrowlAction*>(action))
+                {
+                    return 0.0f;
+                }
             }
         }
     }
+
+    // Shared: keep hunter/warlock pets off the chow (kiters snare-and-run; a pet
+    // tanking chow scatters the pack).
     if (dynamic_cast<PetAttackAction*>(action))
     {
         Unit* target = AI_VALUE(Unit*, "current target");

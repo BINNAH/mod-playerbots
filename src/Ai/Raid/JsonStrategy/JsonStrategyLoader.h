@@ -16,6 +16,7 @@
 
 #include "Define.h"  // uint32
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,17 @@ struct JsonResolvedRule
     std::vector<JsonResolvedAction> actions;
 };
 
+// A data-driven multiplier: while `trigger` is active for a bot, the listed
+// action names have their relevance zeroed. This is the JSON analog of a C++
+// Strategy::InitMultipliers entry (e.g. HeiganDanceMultiplier suppressing
+// "avoid aoe"); json-raid carries none otherwise. `trigger` is the resolved
+// factory name; `names` are matched against each action's getName().
+struct JsonResolvedSuppress
+{
+    std::string trigger;
+    std::set<std::string> names;
+};
+
 class RaidJsonRuleSet
 {
 public:
@@ -45,6 +57,7 @@ public:
     void Load();
 
     std::vector<JsonResolvedRule> const& Rules() const { return _rules; }
+    std::vector<JsonResolvedSuppress> const& SuppressRules() const { return _suppress; }
 
     // --- status / diagnostics (populated by Load) ---
     std::string const& SourceDir() const { return _sourceDir; }
@@ -59,6 +72,7 @@ private:
     std::string ResolveDir() const;
 
     std::vector<JsonResolvedRule> _rules;
+    std::vector<JsonResolvedSuppress> _suppress;
     std::string _sourceDir;
     uint32 _fileCount = 0;
     std::vector<std::string> _errors;

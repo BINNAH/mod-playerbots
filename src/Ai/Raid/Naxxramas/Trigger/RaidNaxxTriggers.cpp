@@ -179,6 +179,23 @@ bool FourHorsemenOpeningDefensiveTrigger::IsActive()
     return helper.IsOpeningWindow();
 }
 
+bool FourHorsemenBackPhaseTrigger::IsActive()
+{
+    // Instance-gated rather than threat-gated (UpdateBossAI), so a front DPS
+    // with no threat on the casters still flips into the back phase.
+    if (!helper.EncounterEngaged() || !helper.FrontPairDead())
+        return false;
+
+    if (!bot->IsInCombat())
+        return false;
+
+    // Attractors keep soaking; healers keep their own positioning.
+    if (helper.IsAttracter(bot) || PlayerbotAI::IsHeal(bot))
+        return false;
+
+    return true;
+}
+
 bool SapphironGroundTrigger::IsActive()
 {
     if (!helper.UpdateBossAI())
@@ -195,7 +212,12 @@ bool SapphironFlightTrigger::IsActive()
     return helper.IsPhaseFlight();
 }
 
-bool GluthTrigger::IsActive() { return helper.UpdateBossAI(); }
+// UpdateBossAI() is threat-gated (find target), so it stays false for the
+// off-tanks/kiters who never touch Gluth — and the gluth actions (above all the
+// slowdown that sends them to the SW chow ring) would never run for them. OR in
+// the instance boss-state so the trigger is live for EVERY bot from the pull;
+// the individual actions still self-gate (MT/ranged wait for aggro internally).
+bool GluthTrigger::IsActive() { return helper.UpdateBossAI() || helper.GluthEngaged(); }
 
 bool GluthMainTankMortalWoundTrigger::IsActive()
 {

@@ -1,0 +1,45 @@
+{
+  "name": "heigan",
+  "boss": "heigan the unclean",
+  "_comment": "Heigan's eruption dance as data via the generic 'timed_safe_zone' shape (parameterized HeiganDanceAction). Two instances differ only in cadence -- slow (15s/10s) and fast (7s/4s) -- sharing 4 safe-zone centers + the triangle-wave walk 3-2-1-0-1-2 (see BossNotes/Heigan.md). 'hold'=1 (fast): own the tick when parked, never cast (tight 4s cadence). 'hold'=0 (slow): yield once parked so casters DPS/heal between eruptions. 'cast_while_moving'=1: while EN ROUTE, yield the tick so each bot's OWN rotation fires INSTANTS as it relocates -- the engine refuses cast-time spells while moving (CanCastSpell), so only instants come out (zero risk of rooting into an eruption). The 'suppress' rule below is what makes cast_while_moving safe: while Heigan is engaged it zeroes the movement-hijackers (avoid aoe / reach spell / combat formation move / flee) so they can't grab the yielded tick and pull a bot off the dance route. (json-raid has InitMultipliers now -- this is the data-driven form, the analog of the C++ HeiganDanceMultiplier; also lets four_horsemen carry its dropped multiplier.) reach MELEE is deliberately NOT suppressed so slow-phase melee can still close on the platform. WHO/WHEN stays on the proven C++ triggers (Level-1). PRIORITIES 31/32 (relevance 91/92) beat avoid-aoe@90 -- json-raid priority isn't clamped, it's an offset on ACTION_RAID(60). Test 25-man; A/B with .rjson off.",
+  "rules": [
+    {
+      "_comment": "Fast dance (everyone): teleported up, Plague Cloud channel, +7s/+4s eruptions. hold while parked (no cast), cast instants while moving.",
+      "trigger": { "name": "heigan fast dance" },
+      "actions": [
+        { "shape": "timed_safe_zone", "params": {
+            "zones": [[2756.0, -3704.0], [2762.3, -3684.6], [2775.5, -3674.4], [2794.9, -3668.1]],
+            "z": 276.54,
+            "pattern": [3, 2, 1, 0, 1, 2],
+            "first_at": 7000, "interval": 4000,
+            "hold": true, "cast_while_moving": true, "tolerance": 5.0 }, "priority": 32 }
+      ]
+    },
+    {
+      "_comment": "Slow dance, ranged: +15s/+10s eruptions. Yield once parked (cast freely, incl cast-time -- 10s window) and cast instants while moving between wedges.",
+      "trigger": { "name": "heigan slow dance ranged" },
+      "actions": [
+        { "shape": "timed_safe_zone", "params": {
+            "zones": [[2756.0, -3704.0], [2762.3, -3684.6], [2775.5, -3674.4], [2794.9, -3668.1]],
+            "z": 276.54,
+            "pattern": [3, 2, 1, 0, 1, 2],
+            "first_at": 15000, "interval": 10000,
+            "hold": false, "cast_while_moving": true, "tolerance": 5.0 }, "priority": 31 }
+      ]
+    },
+    {
+      "_comment": "Slow dance, tank + melee: park on the SE platform (no eruption GOs, outside the Spell Disruption bubble). Kept as the proven C++ 'heigan platform' action -- its final-8s bleed-off onto the dance is Heigan-specific timing glue.",
+      "trigger": { "name": "heigan slow dance platform" },
+      "actions": [
+        { "name": "heigan platform", "priority": 31 }
+      ]
+    }
+  ],
+  "suppress": [
+    {
+      "_comment": "While Heigan is engaged (both phases), zero the movement actions that would otherwise hijack a yielded dance tick (cast_while_moving) and drag a bot off the safe route. NOT 'reach melee' -- slow-phase melee need it to close on the platform. This is the data-driven HeiganDanceMultiplier.",
+      "trigger": { "shape": "encounter_active", "boss": "heigan the unclean" },
+      "actions": ["avoid aoe", "reach spell", "combat formation move", "flee"]
+    }
+  ]
+}

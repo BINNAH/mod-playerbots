@@ -37,6 +37,7 @@ public:
         creators["four horsemen attack in order"] = &RaidNaxxActionContext::four_horsemen_attack_in_order;
         creators["four horsemen avoid void zone"] = &RaidNaxxActionContext::four_horsemen_avoid_void_zone;
         creators["four horsemen healer bleed off mark"] = &RaidNaxxActionContext::four_horsemen_healer_bleed_off_mark;
+        creators["four horsemen back phase"] = &RaidNaxxActionContext::four_horsemen_back_phase;
 
         creators["sapphiron ground position"] = &RaidNaxxActionContext::sapphiron_ground_position;
         creators["sapphiron flight position"] = &RaidNaxxActionContext::sapphiron_flight_position;
@@ -56,6 +57,7 @@ public:
         creators["gluth choose target"] = &RaidNaxxActionContext::gluth_choose_target;
         creators["gluth position"] = &RaidNaxxActionContext::gluth_position;
         creators["gluth slowdown"] = &RaidNaxxActionContext::gluth_slowdown;
+        creators["gluth burn adds"] = &RaidNaxxActionContext::gluth_burn_adds;
 
         //creators["patchwerk ranged position"] = &RaidNaxxActionContext::patchwerk_ranged_position;
 
@@ -87,6 +89,7 @@ private:
     static Action* four_horsemen_attack_in_order(PlayerbotAI* ai) { return new FourHorsemenAttackInOrderAction(ai); }
     static Action* four_horsemen_avoid_void_zone(PlayerbotAI* ai) { return new FourHorsemenAvoidVoidZoneAction(ai); }
     static Action* four_horsemen_healer_bleed_off_mark(PlayerbotAI* ai) { return new FourHorsemenHealerBleedOffMarkAction(ai); }
+    static Action* four_horsemen_back_phase(PlayerbotAI* ai) { return new FourHorsemenBackPhaseAction(ai); }
     // static Action* sapphiron_ground_main_tank_position(PlayerbotAI* ai) { return new
     // SapphironGroundMainTankPositionAction(ai); }
     static Action* sapphiron_ground_position(PlayerbotAI* ai) { return new SapphironGroundPositionAction(ai); }
@@ -110,6 +113,7 @@ private:
     static Action* gluth_choose_target(PlayerbotAI* ai) { return new GluthChooseTargetAction(ai); }
     static Action* gluth_position(PlayerbotAI* ai) { return new GluthPositionAction(ai); }
     static Action* gluth_slowdown(PlayerbotAI* ai) { return new GluthSlowdownAction(ai); }
+    static Action* gluth_burn_adds(PlayerbotAI* ai) { return new GluthBurnAddsAction(ai); }
     //static Action* patchwerk_ranged_position(PlayerbotAI* ai) { return new PatchwerkRangedPositionAction(ai); }
     static Action* loatheb_position(PlayerbotAI* ai) { return new LoathebPositionAction(ai); }
     static Action* loatheb_choose_target(PlayerbotAI* ai) { return new LoathebChooseTargetAction(ai); }

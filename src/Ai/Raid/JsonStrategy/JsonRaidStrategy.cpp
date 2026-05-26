@@ -1,6 +1,9 @@
 #include "JsonRaidStrategy.h"
 
+#include "Action.h"
+#include "AiObjectContext.h"
 #include "JsonStrategyLoader.h"
+#include "Trigger.h"
 
 void JsonRaidStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
@@ -20,4 +23,33 @@ void JsonRaidStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 
         triggers.push_back(new TriggerNode(rule.trigger, std::move(handlers)));
     }
+}
+
+void JsonRaidStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
+{
+    RaidJsonRuleSet& ruleSet = RaidJsonRuleSet::instance();
+    if (!ruleSet.Loaded())
+        ruleSet.Load();
+
+    for (JsonResolvedSuppress const& s : ruleSet.SuppressRules())
+        multipliers.push_back(new JsonSuppressMultiplier(botAI, s.trigger, s.names));
+}
+
+float JsonSuppressMultiplier::GetValue(Action* action)
+{
+    if (!action || _names.empty())
+        return 1.0f;
+
+    // Resolve the gating trigger once from the shared context (handles the
+    // "base::qualifier" form, e.g. "json encounter::boss=heigan the unclean").
+    if (!_resolved)
+    {
+        _trigger = context->GetTrigger(_triggerName);
+        _resolved = true;
+    }
+
+    if (!_trigger || !_trigger->IsActive())
+        return 1.0f;
+
+    return _names.count(action->getName()) ? 0.0f : 1.0f;
 }

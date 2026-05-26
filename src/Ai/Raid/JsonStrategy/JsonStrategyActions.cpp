@@ -2,9 +2,11 @@
 
 #include "JsonStrategyShapeUtil.h"
 #include "Playerbots.h"
+#include "Timer.h"
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <limits>
 
 // ---------------------------------------------------------------------------
@@ -118,72 +120,91 @@ bool JsonSpreadAction::Execute(Event /*event*/)
 }
 
 // ---------------------------------------------------------------------------
-// attack_target
+// attack  (merged former attack_target + attack_priority + attack_nearest)
 // ---------------------------------------------------------------------------
-bool JsonAttackTargetAction::Execute(Event /*event*/)
+
+// Match `unit` against `token`: an all-digit token compares the creature entry
+// id, anything else the (case-insensitive) creature name.
+static bool MatchesNameOrEntry(PlayerbotAI* botAI, Unit* unit, std::string const& token)
 {
-    if (_target.empty())
+    if (token.empty())
         return false;
-
-    Unit* target = AI_VALUE2(Unit*, "find target", _target);
-    if (!target)
-        return false;
-
-    // Already on it — let the normal rotation / lower-priority actions run.
-    if (context->GetValue<Unit*>("current target")->Get() == target)
-        return false;
-
-    return Attack(target);
+    if (token.find_first_not_of("0123456789") == std::string::npos)
+        return unit->GetEntry() == (uint32)std::strtoul(token.c_str(), nullptr, 10);
+    return botAI->EqualLowercaseName(unit->GetName(), token);
 }
 
-// ---------------------------------------------------------------------------
-// attack_priority
-// ---------------------------------------------------------------------------
-void JsonAttackPriorityAction::Qualify(std::string const qual)
+void JsonAttackAction::Qualify(std::string const qual)
 {
     Qualified::Qualify(qual);
-    _addsCsv = JsonKv(qual, "adds");
+    _targetsCsv = JsonKv(qual, "targets");
     _boss = JsonKv(qual, "boss");
+    _nearestDetect = JsonKv(qual, "detect") == "nearest";
+    _nearestSelect = JsonKv(qual, "select") == "nearest";
 }
 
-bool JsonAttackPriorityAction::Execute(Event /*event*/)
+bool JsonAttackAction::Execute(Event /*event*/)
 {
     Unit* target = nullptr;
 
-    if (!_addsCsv.empty())
+    if (!_targetsCsv.empty())
     {
-        std::vector<std::string> addNames = JsonSplit(_addsCsv, ',');
-        GuidVector attackers = AI_VALUE(GuidVector, "attackers");
-        Unit* lowest = nullptr;
-        for (ObjectGuid const& guid : attackers)
+        std::vector<std::string> tokens = JsonSplit(_targetsCsv, ',');
+        Unit* current = context->GetValue<Unit*>("current target")->Get();
+
+        // Detection source: the threat list, or a nearby-NPC scan that also sees
+        // OFF-THREAT objects (cocoons, freshly-spawned adds no one has aggro on).
+        GuidVector candidates = _nearestDetect ? AI_VALUE(GuidVector, "nearest npcs")
+                                               : AI_VALUE(GuidVector, "attackers");
+
+        Unit* best = nullptr;
+        float bestMetric = 0.0f;
+        bool currentMatches = false;
+        for (ObjectGuid const& guid : candidates)
         {
             Unit* unit = botAI->GetUnit(guid);
             if (!unit || !unit->IsAlive())
                 continue;
-            bool isAdd = false;
-            for (std::string const& name : addNames)
-            {
-                if (botAI->EqualLowercaseName(unit->GetName(), name))
+
+            bool match = false;
+            for (std::string const& token : tokens)
+                if (MatchesNameOrEntry(botAI, unit, token))
                 {
-                    isAdd = true;
+                    match = true;
                     break;
                 }
-            }
-            if (!isAdd)
+            if (!match)
                 continue;
-            if (!lowest || unit->GetHealthPct() < lowest->GetHealthPct())
-                lowest = unit;
+
+            if (unit == current)
+                currentMatches = true;
+
+            // Lower wins for both metrics: nearest distance, or lowest health %.
+            float metric = _nearestSelect ? bot->GetExactDist2d(unit) : unit->GetHealthPct();
+            if (!best || metric < bestMetric)
+            {
+                best = unit;
+                bestMetric = metric;
+            }
         }
-        target = lowest;
+
+        // Stick to the match we're already on instead of chasing whichever is
+        // momentarily best. With two near-equal candidates (e.g. Anub's pair of
+        // Crypt Guards) the global "best" flips tick-to-tick and every flip
+        // cancels a caster's in-flight nuke — so casters thrash without finishing.
+        // Only fall back to the freshly-picked best when our current target is no
+        // longer a live match (dead/gone), i.e. when we need the next target.
+        target = currentMatches ? current : best;
     }
 
-    // No prioritized adds up — fall back to the boss.
+    // None of the priority targets up — fall back to the boss so DPS don't idle.
     if (!target && !_boss.empty())
         target = AI_VALUE2(Unit*, "find target", _boss);
 
     if (!target)
         return false;
 
+    // Already on it — yield so lower-priority actions (rotation) run.
     if (context->GetValue<Unit*>("current target")->Get() == target)
         return false;
 
@@ -281,4 +302,120 @@ bool JsonTankAddsAction::Execute(Event /*event*/)
                       MovementPriority::MOVEMENT_COMBAT);
 
     return false;
+}
+
+// ---------------------------------------------------------------------------
+// timed_safe_zone  (generic form of HeiganDanceAction)
+// ---------------------------------------------------------------------------
+void JsonTimedSafeZoneAction::Qualify(std::string const qual)
+{
+    Qualified::Qualify(qual);
+    _zones.clear();
+    _pattern.clear();
+    _valid = false;
+    // A re-qualify (reload with edited params) is a fresh action — drop the clock.
+    _phaseStartMs = 0;
+    _lastSeenMs = 0;
+
+    for (std::string const& tok : JsonSplit(JsonKv(qual, "zones"), ','))
+        _zones.push_back((float)std::atof(tok.c_str()));
+    for (std::string const& tok : JsonSplit(JsonKv(qual, "pattern"), ','))
+        _pattern.push_back((uint8)std::atoi(tok.c_str()));
+
+    _z = (float)std::atof(JsonKv(qual, "z", "0").c_str());
+    _firstAt = (uint32)std::strtoul(JsonKv(qual, "first", "0").c_str(), nullptr, 10);
+    _interval = (uint32)std::strtoul(JsonKv(qual, "interval", "0").c_str(), nullptr, 10);
+    _hold = JsonKv(qual, "hold") == "1";
+    _castWhileMoving = JsonKv(qual, "cw") == "1";
+    std::string tol = JsonKv(qual, "tol", "5.0");
+    _tol = (float)std::atof(tol.c_str());
+
+    // Need an even, non-empty zone list, a pattern, a positive interval, and every
+    // pattern index must resolve to a zone we actually have.
+    if (_zones.size() >= 2 && (_zones.size() % 2 == 0) && !_pattern.empty() && _interval > 0)
+    {
+        _valid = true;
+        for (uint8 idx : _pattern)
+            if ((size_t)idx * 2 + 1 >= _zones.size())
+            {
+                _valid = false;
+                break;
+            }
+    }
+}
+
+bool JsonTimedSafeZoneAction::Execute(Event /*event*/)
+{
+    if (!_valid)
+        return false;
+
+    uint32 now = getMSTime();
+
+    // Per-bot phase clock. The rule's trigger only lets this run during its phase,
+    // so the action sits dormant for the whole *other* phase. Anchor on first run
+    // and re-anchor after a long idle gap (the dormancy between same-phase windows)
+    // — that gap IS the phase boundary. The threshold must stay well above a single
+    // cast/channel: a casting bot parks its AI (nextCheckDelay = castTime) so this
+    // isn't re-entered for the cast's duration; at a low threshold every nuke would
+    // look like a phase change and reset the clock every cast. 30s clears the
+    // longest channel yet sits under any same-phase dormancy. (Mirrors the proven
+    // HeiganDanceAction threshold reasoning.)
+    constexpr uint32 kStaleGapMs = 30000;
+    bool fresh = (_phaseStartMs == 0);
+    bool longGap = (_lastSeenMs != 0) && (now - _lastSeenMs > kStaleGapMs);
+    if (fresh || longGap)
+        _phaseStartMs = now;
+    _lastSeenMs = now;
+
+    // Which eruption are we on, and therefore which zone is safe. Before the first
+    // eruption the safe zone is pattern[0]; after it the index walks the pattern.
+    uint32 elapsed = now - _phaseStartMs;
+    uint32 k = (elapsed < _firstAt) ? 0u : (elapsed - _firstAt) / _interval + 1u;
+    uint8 idx = _pattern[k % _pattern.size()];
+    float x = _zones[idx * 2];
+    float y = _zones[idx * 2 + 1];
+
+    // Already on the safe zone.
+    if (bot->IsWithinDist2d(x, y, _tol))
+    {
+        // Tight cadence (hold=1): own the tick rather than hand back — a started
+        // cast parks the AI past the next eruption, so the bot would eat a wave
+        // mid-cast. Interrupt anything carried in and hold. Costs nothing when the
+        // boss is unattackable for the phase anyway.
+        if (_hold)
+        {
+            botAI->InterruptSpell();
+            return true;
+        }
+        // Loose cadence (hold=0): yield so DPS / heal rotations run between
+        // eruptions — there's ample time to cast and still relocate.
+        return false;
+    }
+
+    // En route to the safe zone.
+    if (_castWhileMoving)
+    {
+        // Yield the tick so the bot's own rotation fires INSTANTS while we
+        // relocate. PlayerbotAI::CanCastSpell refuses cast-time spells while the
+        // bot is moving, so only instants come out -- no risk of rooting mid-cast
+        // into an eruption. A companion json-raid `suppress` rule must zero the
+        // movement-hijackers (avoid aoe / reach spell / combat formation move /
+        // flee) for this phase, else they'd grab the yielded tick and pull the bot
+        // off-route. The MoveTo movement generator persists across the yielded
+        // ticks; we re-issue it each tick (deduped) so the dance keeps steering at
+        // top relevance and just hands the *rest* of the tick to the rotation.
+        // Don't InterruptSpell here -- starting the move already cancels any
+        // carried-in cast-time spell, and we want this tick's instant to land.
+        MoveTo(bot->GetMapId(), x, y, _z, false, false, false, false,
+               MovementPriority::MOVEMENT_COMBAT);
+        return false;
+    }
+
+    // Default: hold the tick. MoveTo returns false once the move is a duplicate,
+    // and yielding there would let a lower-priority cast halt the bot mid-floor.
+    // Holding keeps the dance owning movement until the bot reaches the safe zone.
+    botAI->InterruptSpell();
+    MoveTo(bot->GetMapId(), x, y, _z, false, false, false, false,
+           MovementPriority::MOVEMENT_COMBAT);
+    return true;
 }

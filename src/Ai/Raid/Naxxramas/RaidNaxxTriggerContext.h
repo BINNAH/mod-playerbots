@@ -36,6 +36,7 @@ public:
         creators["four horsemen void zone"] = &RaidNaxxTriggerContext::four_horsemen_void_zone;
         creators["four horsemen healer high mark"] = &RaidNaxxTriggerContext::four_horsemen_healer_high_mark;
         creators["four horsemen opening defensive"] = &RaidNaxxTriggerContext::four_horsemen_opening_defensive;
+        creators["four horsemen back phase"] = &RaidNaxxTriggerContext::four_horsemen_back_phase;
 
         creators["sapphiron ground"] = &RaidNaxxTriggerContext::sapphiron_ground;
         creators["sapphiron flight"] = &RaidNaxxTriggerContext::sapphiron_flight;
@@ -86,6 +87,7 @@ private:
     static Trigger* four_horsemen_void_zone(PlayerbotAI* ai) { return new FourHorsemenVoidZoneTrigger(ai); }
     static Trigger* four_horsemen_healer_high_mark(PlayerbotAI* ai) { return new FourHorsemenHealerHighMarkTrigger(ai); }
     static Trigger* four_horsemen_opening_defensive(PlayerbotAI* ai) { return new FourHorsemenOpeningDefensiveTrigger(ai); }
+    static Trigger* four_horsemen_back_phase(PlayerbotAI* ai) { return new FourHorsemenBackPhaseTrigger(ai); }
 
     static Trigger* sapphiron_ground(PlayerbotAI* ai) { return new SapphironGroundTrigger(ai); }
     static Trigger* sapphiron_flight(PlayerbotAI* ai) { return new SapphironFlightTrigger(ai); }

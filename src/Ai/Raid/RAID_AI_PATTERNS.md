@@ -122,7 +122,7 @@ list in `RAID_AI_INVENTORY.md`).
 | **A3** | Position relative to boss | Behind / flank / face-away / at-range from boss | distance, angle | MovementAction | GrobbulusGoBehind, OnyxiaMoveToSide, YoggLunaticGaze |
 | **A4** | Flee a hazard source | Move out of a radius around an NPC / ground effect / aura source | source entry, radius | MoveAwayFromCreatureAction | FourHorsemenAvoidVoidZone, AvoidFlameTsunami, McMoveFromBaronGeddon |
 | **A5** | Dodge a line / charge | Sidestep perpendicular to a charge, beam, cone, or projectile path (incl. jump-dodge) | — | MovementAction | IcehowlDodgeCharge, HodirBitingColdJump, KologarnEyebeam, VezaxShadowCrash |
-| **A6** | Timed safe-zone dance | Predict the boss-script schedule and move to the deterministically-safe spot | phase timings, zone geometry | MovementAction | HeiganDance, OnyxiaMoveToSafeZone (deep breath), SindragosaBlisteringCold |
+| **A6** | Timed safe-zone dance | Predict the boss-script schedule and move to the deterministically-safe spot | phase timings, zone geometry | MovementAction | HeiganDance, OnyxiaMoveToSafeZone (deep breath), SindragosaBlisteringCold — **fixed-pattern case now data-driven: JSON `timed_safe_zone` shape** |
 | **A7** | Spread / disperse | Increase spacing from allies — to a fixed distance, an assigned ring slot, or only when self carries a spread-debuff | distance, [slot index], [debuff] | MoveFromGroup / MoveAwayFromPlayerWithDebuff | XT002MoveAwayFromGroup, GormokSpread, FestergutSpore, OnyxiaSpreadOut |
 | **A8** | Stack / converge | Move together onto the group or a point (inverse of spread) | target, radius | MovementAction | BqlPactOfDarkfallen, SolarianStackForAoe, NightbaneFlightStack |
 | **A9** | Position by self buff/debuff | Move based on what aura the bot carries (polarity side, beacon, stacks) | aura, geometry | MovementAction | ThaddiusMovePolarity, SindragosaMysticBuffet, SartharionTank(drake) |
@@ -183,7 +183,10 @@ A small set of fights have behavior that is genuinely irreducible — expressing
 as data would mean building a scripting language with timers, loops, and state.
 **Don't.** Keep these in C++; a data layer should only expose their tunable knobs.
 
-- **Heigan dance clock** — deterministic eruption-schedule prediction.
+- ~~**Heigan dance clock**~~ — *no longer bespoke:* the deterministic
+  fixed-pattern eruption dance is now the generic JSON `timed_safe_zone` shape
+  (zones + walk pattern + per-phase cadence as data). A *reactive/random* safe
+  zone (Sapphiron ice blocks) still belongs here.
 - **Yogg-Saron** — multi-room illusion navigation, brain link pair-spacing, portal in/out, sanity meter.
 - **Lich King** — heroic-aware add management (Valkyr grabs, Defile, Necrotic Plague kite), multi-role winter positioning.
 - **Netherspite (Kara)** — colored beam interception + rotation manager.
