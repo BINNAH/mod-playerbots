@@ -15,10 +15,32 @@
 #define _PLAYERBOT_JSONSTRATEGYLOADER_H
 
 #include "Define.h"  // uint32
+#include "ObjectGuid.h"
 
 #include <set>
 #include <string>
 #include <vector>
+
+// Session-scoped record of which bots are toggled into json-raid mode (`.rjson
+// on`). Source of truth for json-raid EXCLUSIVITY: while a bot is in this set,
+// `PlayerbotAI::ApplyInstanceStrategies` must NOT (re-)attach the C++ instance
+// strategy on top of json-raid. The core re-runs ApplyInstanceStrategies on its
+// own (worldport ACK, ResetStrategies), which would otherwise silently re-add
+// e.g. "naxx" alongside json-raid — making it ambiguous which strategy actually
+// runs the fight. Toggled by the `.rjson on`/`off` commands. In-memory only
+// (cleared on worldserver restart — re-run `.rjson on` next session).
+class RaidJsonMode
+{
+public:
+    static RaidJsonMode& instance();
+
+    void Set(ObjectGuid bot, bool on);
+    bool IsActive(ObjectGuid bot) const;
+
+private:
+    RaidJsonMode() = default;
+    std::set<ObjectGuid> _bots;
+};
 
 // One action under a trigger. `name` is the fully-resolved factory name
 // (possibly "base::qualifier"); `priority` is the offset added to ACTION_RAID.

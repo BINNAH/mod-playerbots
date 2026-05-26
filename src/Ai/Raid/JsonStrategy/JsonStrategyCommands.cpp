@@ -113,8 +113,12 @@ bool RaidJsonCommandScript::HandleOnCommand(ChatHandler* handler)
     if (!rs.Loaded())
         rs.Load();
 
-    uint32 count = ForEachOwnedBot(master, [](PlayerbotAI* ai, Player* /*bot*/)
+    uint32 count = ForEachOwnedBot(master, [](PlayerbotAI* ai, Player* bot)
     {
+        // Mark this bot json-raid-exclusive FIRST, so the guard in
+        // ApplyInstanceStrategies refuses to re-attach the C++ instance strategy
+        // on any later worldport / ResetStrategies (the leak we're closing).
+        RaidJsonMode::instance().Set(bot->GetGUID(), true);
         for (std::string const& s : kInstanceStrategies)
         {
             if (ai->HasStrategy(s, BOT_STATE_COMBAT))
@@ -144,6 +148,9 @@ bool RaidJsonCommandScript::HandleOffCommand(ChatHandler* handler)
 
     uint32 count = ForEachOwnedBot(master, [](PlayerbotAI* ai, Player* bot)
     {
+        // Clear the exclusivity flag FIRST so ApplyInstanceStrategies below is
+        // allowed to re-attach the proper C++ instance strategy.
+        RaidJsonMode::instance().Set(bot->GetGUID(), false);
         if (ai->HasStrategy("json-raid", BOT_STATE_COMBAT))
             ai->ChangeStrategy("-json-raid", BOT_STATE_COMBAT);
         if (ai->HasStrategy("json-raid", BOT_STATE_NON_COMBAT))
@@ -168,14 +175,28 @@ bool RaidJsonCommandScript::HandleStatusCommand(ChatHandler* handler)
 
     if (Player* master = MasterFromHandler(handler))
     {
-        uint32 active = 0, total = 0;
-        ForEachOwnedBot(master, [&active, &total](PlayerbotAI* ai, Player* /*bot*/)
+        uint32 active = 0, total = 0, leaked = 0;
+        ForEachOwnedBot(master, [&active, &total, &leaked](PlayerbotAI* ai, Player* /*bot*/)
         {
             ++total;
-            if (ai->HasStrategy("json-raid", BOT_STATE_COMBAT))
+            bool json = ai->HasStrategy("json-raid", BOT_STATE_COMBAT);
+            if (json)
                 ++active;
+            // Leak check: a json-raid bot must have NO C++ instance strategy
+            // attached, or it's ambiguous which one drives the fight.
+            if (json)
+                for (std::string const& s : kInstanceStrategies)
+                    if (ai->HasStrategy(s, BOT_STATE_COMBAT))
+                    {
+                        ++leaked;
+                        break;
+                    }
         });
         handler->SendSysMessage(fmt::format("  your bots running json-raid: {}/{}", active, total));
+        if (leaked > 0)
+            handler->SendSysMessage(fmt::format("  WARNING: {} bot(s) ALSO have a C++ instance strategy attached (leak!) — re-run `.rjson on`", leaked));
+        else if (active > 0)
+            handler->SendSysMessage("  exclusivity OK: no C++ instance strategy on json-raid bots.");
     }
     return true;
 }

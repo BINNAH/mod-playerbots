@@ -32,13 +32,26 @@ blocks) still belongs in C++; a *fixed-pattern* one like Heigan does not.
 `cast_while_moving: true`: while *en route* the shape yields the tick so each bot's
 own rotation fires INSTANTS as it relocates. Safe because the engine refuses
 cast-time spells while moving (`PlayerbotAI::CanCastSpell`), so only instants come
-out — no rooting into an eruption. It depends on the `suppress` rule (the
-data-driven `HeiganDanceMultiplier`): while Heigan is engaged it zeros `avoid aoe`,
-`reach spell`, `combat formation move`, `flee` so they can't grab the yielded tick
-and pull a bot off-route. `reach melee` is intentionally **not** suppressed so
-slow-phase melee can still close on the platform. Parked-fast still holds the tick
-(`hold:true`) — no cast there — which is fine since the fast phase is mostly spent
-moving and the boss is unattackable anyway.
+out — no rooting into an eruption. Parked-fast still holds (`hold:true`, no cast),
+fine since the fast phase is mostly spent moving and the boss isn't worth hitting.
+
+It depends on **two phase-split `suppress` rules** (the data-driven
+`HeiganDanceMultiplier`):
+- **Fast** (`heigan fast dance`): zero `avoid aoe`, `reach spell`, `reach melee`,
+  `combat formation move`, `flee`, **`heigan dance`**.
+- **Slow** (`plague cloud` absent): same **minus `reach melee`** (platform melee
+  must close on the tanked boss).
+
+Two non-obvious entries, both learned from `Playerbots.log`:
+1. **`heigan dance` MUST be suppressed.** `.rjson on` strips the C++ `naxx`
+   strategy, but `ApplyInstanceStrategies` re-adds it on zone-in, so the C++
+   `heigan dance` action (@ `ACTION_RAID+3`) is still in the queue. When json
+   safezone yields, it catches the tick and *holds* → rotation never runs → no
+   instants (the bug that "made it worse"). The holding version masked this by
+   winning at 92; the yielding version doesn't.
+2. **`reach melee` only in fast.** Heigan is teleported up in the fast phase but
+   stays targetable, so a melee bot freed by the yield would chase him off the
+   dance floor. Suppress it there; allow it in slow so platform melee can close.
 
 ## Identity
 

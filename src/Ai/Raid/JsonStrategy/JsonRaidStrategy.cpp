@@ -2,6 +2,7 @@
 
 #include "Action.h"
 #include "AiObjectContext.h"
+#include "GenericSpellActions.h"  // CastSpellAction / CastHealingSpellAction (@damage token)
 #include "JsonStrategyLoader.h"
 #include "Trigger.h"
 
@@ -51,5 +52,17 @@ float JsonSuppressMultiplier::GetValue(Action* action)
     if (!_trigger || !_trigger->IsActive())
         return 1.0f;
 
-    return _names.count(action->getName()) ? 0.0f : 1.0f;
+    // Exact action-name match (the original behavior, e.g. "avoid aoe").
+    if (_names.count(action->getName()))
+        return 0.0f;
+
+    // Category token "@damage": zero every non-healing damage cast — the type
+    // filter a name list can't express. Mirrors ThaddiusGenericMultiplier's
+    // `dynamic_cast<CastSpellAction*> && !CastHealingSpellAction`, so a death-
+    // sync suppress can throttle DPS generically without naming every spell.
+    if (_names.count("@damage") && dynamic_cast<CastSpellAction*>(action) &&
+        !dynamic_cast<CastHealingSpellAction*>(action))
+        return 0.0f;
+
+    return 1.0f;
 }

@@ -118,8 +118,8 @@ list in `RAID_AI_INVENTORY.md`).
 | ID | Shape | What it does | Typical params | Base | Examples |
 |---|---|---|---|---|---|
 | **A1** | Move to point / zone | Get to fixed coords or within a radius | x, y, [z], radius | MoveInsideAction | ThorimArenaPositioning, AlarMoveBetweenPlatforms, MorogrimMoveToTankPos |
-| **A2** | Orbit a center point | Circle a point in N slots | x, y, radius, segments | RotateAroundTheCenterPointAction | Anub'Rekhan, Grobbulus, Gluth, NightbaneRotateRanged |
-| **A3** | Position relative to boss | Behind / flank / face-away / at-range from boss | distance, angle | MovementAction | GrobbulusGoBehind, OnyxiaMoveToSide, YoggLunaticGaze |
+| **A2** | Orbit a center point | Circle a point in N slots | x, y, radius, segments | RotateAroundTheCenterPointAction | Anub'Rekhan, Grobbulus, Gluth, NightbaneRotateRanged — **data-driven: JSON `orbit_point` shape; optional `interval` ms = stepped/cadence-paced kite (Grobbulus)** |
+| **A3** | Position relative to boss | Behind / flank / face-away / at-range from boss | distance, angle | MovementAction | GrobbulusGoBehind, OnyxiaMoveToSide, YoggLunaticGaze — **data-driven: JSON `position_vs_boss` shape (anchor radial_out/behind/front/left/right + distance + angle_offset + only_if_closer)** |
 | **A4** | Flee a hazard source | Move out of a radius around an NPC / ground effect / aura source | source entry, radius | MoveAwayFromCreatureAction | FourHorsemenAvoidVoidZone, AvoidFlameTsunami, McMoveFromBaronGeddon |
 | **A5** | Dodge a line / charge | Sidestep perpendicular to a charge, beam, cone, or projectile path (incl. jump-dodge) | — | MovementAction | IcehowlDodgeCharge, HodirBitingColdJump, KologarnEyebeam, VezaxShadowCrash |
 | **A6** | Timed safe-zone dance | Predict the boss-script schedule and move to the deterministically-safe spot | phase timings, zone geometry | MovementAction | HeiganDance, OnyxiaMoveToSafeZone (deep breath), SindragosaBlisteringCold — **fixed-pattern case now data-driven: JSON `timed_safe_zone` shape** |

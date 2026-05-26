@@ -66,15 +66,65 @@ static bool RoleMatches(PlayerbotAI* botAI, Player* bot, std::string const& role
     return false;
 }
 
+// Match `bot` against a comma-separated class list (OR semantics). Empty = any.
+// Lets a rule target e.g. only mages/hunters (the Gluth chow kiters).
+static bool ClassMatches(Player* bot, std::string const& classCsv)
+{
+    if (classCsv.empty())
+        return true;
+
+    uint8 c = bot->getClass();
+    for (std::string const& cls : JsonSplit(classCsv, ','))
+    {
+        if ((cls == "warrior" && c == CLASS_WARRIOR) || (cls == "paladin" && c == CLASS_PALADIN) ||
+            (cls == "hunter" && c == CLASS_HUNTER) || (cls == "rogue" && c == CLASS_ROGUE) ||
+            (cls == "priest" && c == CLASS_PRIEST) || (cls == "shaman" && c == CLASS_SHAMAN) ||
+            (cls == "mage" && c == CLASS_MAGE) || (cls == "warlock" && c == CLASS_WARLOCK) ||
+            (cls == "druid" && c == CLASS_DRUID) ||
+            ((cls == "deathknight" || cls == "dk") && c == CLASS_DEATH_KNIGHT))
+            return true;
+    }
+    return false;
+}
+
+// Match `unit` against `token`: an all-digit token compares the creature entry
+// id, anything else the (case-insensitive) creature name. (Mirrors the same
+// helper in JsonStrategyActions.cpp; kept file-local to each translation unit.)
+static bool MatchesNameOrEntry(PlayerbotAI* botAI, Unit* unit, std::string const& token)
+{
+    if (token.empty())
+        return false;
+    if (token.find_first_not_of("0123456789") == std::string::npos)
+        return unit->GetEntry() == (uint32)std::strtoul(token.c_str(), nullptr, 10);
+    return botAI->EqualLowercaseName(unit->GetName(), token);
+}
+
+// First living NPC matching `token` in an already-fetched proximity list (which
+// is distance-sorted, so first ~= nearest). Threat-independent. nullptr if none.
+static Unit* FindNearbyNamed(PlayerbotAI* botAI, GuidVector const& npcs, std::string const& token)
+{
+    if (token.empty())
+        return nullptr;
+    for (ObjectGuid const& guid : npcs)
+    {
+        Unit* unit = botAI->GetUnit(guid);
+        if (unit && unit->IsAlive() && MatchesNameOrEntry(botAI, unit, token))
+            return unit;
+    }
+    return nullptr;
+}
+
 bool JsonEncounterActiveTrigger::IsActive()
 {
     if (qualifier.empty())
         return false;
 
-    std::string boss, role, aura;
+    std::string boss, role, klass, aura, selfAura, detect;
     bool requirePresent = true;
     bool haveAura = false;
     bool includeCast = true;
+    bool selfRequirePresent = true;
+    bool haveSelfAura = false;
 
     if (qualifier.find('=') == std::string::npos)
     {
@@ -85,6 +135,8 @@ bool JsonEncounterActiveTrigger::IsActive()
     {
         boss = JsonKv(qualifier, "boss");
         role = JsonKv(qualifier, "role");
+        klass = JsonKv(qualifier, "class");
+        detect = JsonKv(qualifier, "detect");
         aura = JsonKv(qualifier, "aura");
         if (!aura.empty())
         {
@@ -92,16 +144,33 @@ bool JsonEncounterActiveTrigger::IsActive()
             requirePresent = JsonKv(qualifier, "has", "1") != "0";
             includeCast = JsonKv(qualifier, "cast", "1") != "0";
         }
+        // Self-aura phase gate: an aura on the BOT (not the boss) — e.g. carrying
+        // Mutating Injection / a polarity charge / a spore. The C++ analog is a
+        // HasAuraTrigger/HasNoAuraTrigger on self (MutatingInjection*Trigger).
+        selfAura = JsonKv(qualifier, "self");
+        if (!selfAura.empty())
+        {
+            haveSelfAura = true;
+            selfRequirePresent = JsonKv(qualifier, "selfhas", "1") != "0";
+        }
     }
 
     if (boss.empty())
         return false;
 
-    Unit* bossUnit = AI_VALUE2(Unit*, "find target", boss);
+    // detect=nearest finds the boss by a proximity scan instead of the threat
+    // list, so the rule fires even for a bot that never threatens him (a kiter /
+    // off-tank who only ever touches the adds). Default stays threat-based.
+    Unit* bossUnit = (detect == "nearest")
+        ? FindNearbyNamed(botAI, AI_VALUE(GuidVector, "nearest npcs"), boss)
+        : AI_VALUE2(Unit*, "find target", boss);
     if (!bossUnit)
         return false;
 
     if (!RoleMatches(botAI, bot, role))
+        return false;
+
+    if (!ClassMatches(bot, klass))
         return false;
 
     if (haveAura)
@@ -113,7 +182,94 @@ bool JsonEncounterActiveTrigger::IsActive()
             return false;
     }
 
+    if (haveSelfAura)
+    {
+        bool present = botAI->HasAura(selfAura, bot);
+        if (present != selfRequirePresent)
+            return false;
+    }
+
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// adds_near
+// ---------------------------------------------------------------------------
+bool JsonAddsNearTrigger::IsActive()
+{
+    std::string add = JsonKv(qualifier, "add");
+    if (add.empty())
+        return false;
+
+    if (!RoleMatches(botAI, bot, JsonKv(qualifier, "role")))
+        return false;
+
+    if (!ClassMatches(bot, JsonKv(qualifier, "class")))
+        return false;
+
+    float range = (float)std::atof(JsonKv(qualifier, "range", "0").c_str());
+    uint32 count = (uint32)std::strtoul(JsonKv(qualifier, "count", "1").c_str(), nullptr, 10);
+    bool ofBoss = JsonKv(qualifier, "of") == "boss";
+
+    GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
+
+    // Measure from the bot (of=self) or the boss (of=boss). The boss is found by
+    // proximity too, so this whole trigger is threat-independent.
+    WorldObject* ref = bot;
+    if (ofBoss)
+    {
+        Unit* bossUnit = FindNearbyNamed(botAI, npcs, JsonKv(qualifier, "boss"));
+        if (!bossUnit)
+            return false;
+        ref = bossUnit;
+    }
+
+    uint32 found = 0;
+    for (ObjectGuid const& guid : npcs)
+    {
+        Unit* unit = botAI->GetUnit(guid);
+        if (!unit || !unit->IsAlive() || !MatchesNameOrEntry(botAI, unit, add))
+            continue;
+        if (range > 0.0f && ref->GetExactDist2d(unit) > range)
+            continue;
+        if (++found >= count)
+            return true;
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// target_hp_ahead
+// ---------------------------------------------------------------------------
+bool JsonTargetHpAheadTrigger::IsActive()
+{
+    std::string others = JsonKv(qualifier, "others");
+    if (others.empty())
+        return false;
+
+    Unit* target = AI_VALUE(Unit*, "current target");
+    if (!target)
+        return false;
+
+    // Only throttle once my add is in the home stretch (the C++ multiplier's
+    // <=40% gate). Default 100 keeps it always active.
+    float myHp = target->GetHealthPct();
+    float below = (float)std::atof(JsonKv(qualifier, "below", "100").c_str());
+    if (myHp > below)
+        return false;
+
+    float margin = (float)std::atof(JsonKv(qualifier, "margin", "0").c_str());
+
+    // Threat-independent: read the OTHER adds by proximity, not the threat list,
+    // so a bot tanking/DPSing only one add can still compare to the other's HP.
+    GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
+    for (std::string const& token : JsonSplit(others, ','))
+    {
+        Unit* other = FindNearbyNamed(botAI, npcs, token);
+        if (other && other != target && other->GetHealthPct() >= myHp + margin)
+            return true;
+    }
+    return false;
 }
 
 // ---------------------------------------------------------------------------

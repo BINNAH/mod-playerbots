@@ -4,6 +4,7 @@
 #include "Playerbots.h"
 #include "Timer.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -20,7 +21,8 @@ void JsonOrbitPointAction::Qualify(std::string const qual)
     float x = 0.0f, y = 0.0f, r = 40.0f;
     unsigned int segments = 16;
     int cw = 1;
-    int parsed = std::sscanf(qual.c_str(), "%f,%f,%f,%u,%d", &x, &y, &r, &segments, &cw);
+    unsigned int interval = 0;
+    int parsed = std::sscanf(qual.c_str(), "%f,%f,%f,%u,%d,%u", &x, &y, &r, &segments, &cw, &interval);
     if (parsed < 4 || segments == 0)
         return;
 
@@ -29,6 +31,11 @@ void JsonOrbitPointAction::Qualify(std::string const qual)
     radius = r;
     intervals = segments;
     clockwise = (cw != 0);
+    _stepIntervalMs = (parsed >= 6) ? interval : 0u;
+    // A re-qualify (reload with edited params) is a fresh action — drop the clock.
+    _lastStepMs = 0;
+    _curWp = 0;
+    _haveCurWp = false;
 
     waypoints.clear();
     for (uint32 i = 0; i < intervals; ++i)
@@ -43,9 +50,96 @@ void JsonOrbitPointAction::Qualify(std::string const qual)
 
 uint32 JsonOrbitPointAction::GetCurrWaypoint()
 {
-    uint32 nearest = FindNearestWaypoint();
     uint32 step = clockwise ? 1u : (intervals - 1u);
-    return (nearest + step) % intervals;
+
+    // Continuous (default): advance off the bot's current nearest waypoint every
+    // call, so the bot perpetually walks the ring.
+    if (_stepIntervalMs == 0)
+        return (FindNearestWaypoint() + step) % intervals;
+
+    // Stepped: hold the current target waypoint and only advance one slot every
+    // `interval` ms — the tank parks and attacks between drags (cadence-paced
+    // kite). Per-bot state on the instance. Re-anchor to the nearest waypoint
+    // after a long dormant gap (a fresh pull after the rule sat idle) so we don't
+    // drag the tank across the room to a slot left over from the last fight; the
+    // gap floor stays above the step interval so it never false-fires mid-fight.
+    uint32 now = getMSTime();
+    uint32 reanchorGap = std::max<uint32>(30000u, _stepIntervalMs * 2u);
+    if (!_haveCurWp || (now - _lastStepMs > reanchorGap))
+    {
+        _curWp = (FindNearestWaypoint() + step) % intervals;
+        _lastStepMs = now;
+        _haveCurWp = true;
+        return _curWp;
+    }
+    if (now - _lastStepMs >= _stepIntervalMs)
+    {
+        _curWp = (_curWp + step) % intervals;
+        _lastStepMs = now;
+    }
+    return _curWp;
+}
+
+// ---------------------------------------------------------------------------
+// position_vs_boss
+// ---------------------------------------------------------------------------
+void JsonPositionVsBossAction::Qualify(std::string const qual)
+{
+    Qualified::Qualify(qual);
+    _valid = false;
+
+    _boss = JsonKv(qual, "boss");
+    _distance = (float)std::atof(JsonKv(qual, "distance", "0").c_str());
+    _angleOffset = (float)std::atof(JsonKv(qual, "angle", "0").c_str());
+    _onlyIfCloser = JsonKv(qual, "closer", "0") == "1";
+
+    std::string anchor = JsonKv(qual, "anchor", "radial_out");
+    _anchorRadial = false;
+    if (anchor == "radial_out")
+        _anchorRadial = true;
+    else if (anchor == "behind")
+        _baseAngle = (float)M_PI;
+    else if (anchor == "front")
+        _baseAngle = 0.0f;
+    else if (anchor == "left")
+        _baseAngle = (float)M_PI / 2.0f;
+    else if (anchor == "right")
+        _baseAngle = -(float)M_PI / 2.0f;
+    else
+        return;  // unknown anchor — leave invalid
+
+    if (_distance <= 0.0f)
+        return;
+    _valid = true;
+}
+
+bool JsonPositionVsBossAction::Execute(Event /*event*/)
+{
+    if (!_valid)
+        return false;
+
+    Unit* boss = _boss.empty() ? AI_VALUE(Unit*, "boss target")
+                               : AI_VALUE2(Unit*, "find target", _boss);
+    if (!boss)
+        return false;
+
+    // "Maintain range": once already far enough out there's nothing to do, so
+    // yield the tick to a lower-priority action (e.g. attacking).
+    if (_onlyIfCloser && bot->GetExactDist2d(boss) >= _distance)
+        return false;
+
+    // radial_out keys off the boss->bot bearing (back off wherever you stand);
+    // the facing modes key off the boss's orientation + the chosen base bearing.
+    float angle = _anchorRadial ? boss->GetAngle(bot)
+                                : boss->GetOrientation() + _baseAngle;
+    angle += _angleOffset;
+
+    float x = boss->GetPositionX() + std::cos(angle) * _distance;
+    float y = boss->GetPositionY() + std::sin(angle) * _distance;
+    float z = boss->GetPositionZ();
+
+    return MoveTo(bot->GetMapId(), x, y, z, false, false, false, false,
+                  MovementPriority::MOVEMENT_COMBAT);
 }
 
 // ---------------------------------------------------------------------------
@@ -56,15 +150,46 @@ void JsonStackPointAction::Qualify(std::string const qual)
     Qualified::Qualify(qual);
     _valid = false;
 
-    float px = 0.0f, py = 0.0f, r = 5.0f;
-    int parsed = std::sscanf(qual.c_str(), "%f,%f,%f", &px, &py, &r);
+    float px = 0.0f, py = 0.0f, r = 5.0f, pz = 0.0f;
+    int hold = 0;
+    int parsed = std::sscanf(qual.c_str(), "%f,%f,%f,%d,%f", &px, &py, &r, &hold, &pz);
     if (parsed < 2)
         return;
 
     x = px;
     y = py;
     distance = (parsed >= 3 && r > 0.0f) ? r : 5.0f;
+    _hold = (parsed >= 4 && hold != 0);
+    _hasZ = (parsed >= 5);
+    _z = pz;
     _valid = true;
+}
+
+bool JsonStackPointAction::Execute(Event event)
+{
+    if (!_valid)
+        return false;
+
+    // Explicit anchor z (an ELEVATED spot, e.g. Thaddius's add platforms): move in
+    // 3D. MoveInsideAction yields on 2D distance at the bot's CURRENT z, so a bot on
+    // the floor below the platform thinks it has arrived and never climbs. Route to
+    // (x,y,z) and only yield once within `distance` in 3D (the pathfinder climbs the
+    // ramp, same as the C++ ThaddiusAttackNearestPetAction's MoveTo(tankPosZ)).
+    if (_hasZ)
+    {
+        if (bot->GetExactDist(x, y, _z) > distance &&
+            MoveTo(bot->GetMapId(), x, y, _z, false, false, false, false, MovementPriority::MOVEMENT_COMBAT))
+            return true;
+        return _hold;
+    }
+
+    // MoveInsideAction returns true while still pathing to the point, false once
+    // within `distance`. When parked, hold=1 keeps owning the tick (stand still)
+    // so the bot doesn't fall through to generic combat and run off to the boss;
+    // hold=0 yields so a lower-priority action can run.
+    if (MoveInsideAction::Execute(event))
+        return true;
+    return _hold;
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +266,9 @@ void JsonAttackAction::Qualify(std::string const qual)
     _boss = JsonKv(qual, "boss");
     _nearestDetect = JsonKv(qual, "detect") == "nearest";
     _nearestSelect = JsonKv(qual, "select") == "nearest";
+    _sticky = JsonKv(qual, "sticky", "1") != "0";
+    _maxHpPct = (float)std::atof(JsonKv(qual, "maxhp", "0").c_str());
+    _maxRange = (float)std::atof(JsonKv(qual, "maxrange", "0").c_str());
 }
 
 bool JsonAttackAction::Execute(Event /*event*/)
@@ -176,6 +304,15 @@ bool JsonAttackAction::Execute(Event /*event*/)
             if (!match)
                 continue;
 
+            // Optional candidate filters: only adds at/below a HP% (e.g. the 5%
+            // Decimate chow) and/or within a range. When these zero out every
+            // candidate the action falls back to the boss below, so "burst the
+            // decimated chow, else tunnel the boss" needs no separate phase gate.
+            if (_maxHpPct > 0.0f && unit->GetHealthPct() > _maxHpPct)
+                continue;
+            if (_maxRange > 0.0f && bot->GetExactDist2d(unit) > _maxRange)
+                continue;
+
             if (unit == current)
                 currentMatches = true;
 
@@ -194,7 +331,10 @@ bool JsonAttackAction::Execute(Event /*event*/)
         // cancels a caster's in-flight nuke — so casters thrash without finishing.
         // Only fall back to the freshly-picked best when our current target is no
         // longer a live match (dead/gone), i.e. when we need the next target.
-        target = currentMatches ? current : best;
+        // sticky=0 disables the stick and re-picks `best` every tick — for a tank
+        // that must swap to whatever add is now nearest after Magnetic Pull yanks
+        // it to the other platform (else it runs back to its original add).
+        target = (currentMatches && _sticky) ? current : best;
     }
 
     // None of the priority targets up — fall back to the boss so DPS don't idle.
@@ -209,6 +349,179 @@ bool JsonAttackAction::Execute(Event /*event*/)
         return false;
 
     return Attack(target);
+}
+
+// ---------------------------------------------------------------------------
+// snare_area
+// ---------------------------------------------------------------------------
+void JsonSnareAreaAction::Qualify(std::string const qual)
+{
+    Qualified::Qualify(qual);
+    _spells.clear();
+    for (std::string const& s : JsonSplit(JsonKv(qual, "spells"), ','))
+        _spells.push_back(s);
+    _add = JsonKv(qual, "add");
+    _boss = JsonKv(qual, "boss");
+    std::string t = JsonKv(qual, "target", "self");
+    _targetMode = (t == "nearest") ? 1 : (t == "leak") ? 2 : 0;
+    _range = (float)std::atof(JsonKv(qual, "range", "0").c_str());
+}
+
+bool JsonSnareAreaAction::Execute(Event /*event*/)
+{
+    if (_spells.empty() || _add.empty())
+        return false;
+
+    // Off-threat-visible scan: chow are not on a kiter's / off-tank's threat list.
+    GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
+
+    Unit* castTarget = nullptr;
+
+    if (_targetMode == 0)  // self / ground-centered AoE: only fire if an add is near.
+    {
+        bool anyInRange = false;
+        for (ObjectGuid const& guid : npcs)
+        {
+            Unit* unit = botAI->GetUnit(guid);
+            if (!unit || !unit->IsAlive() || !MatchesNameOrEntry(botAI, unit, _add))
+                continue;
+            if (_range <= 0.0f || bot->GetExactDist2d(unit) <= _range)
+            {
+                anyInRange = true;
+                break;
+            }
+        }
+        if (!anyInRange)
+            return false;
+        castTarget = bot;
+    }
+    else  // nearest (1) / leak (2): pick a chow to cast on.
+    {
+        // leak measures from the boss (the chow nearest him is the one to stop);
+        // nearest measures from the bot. The reference unit is found by proximity,
+        // so it works even when no one threatens the boss.
+        Unit* ref = bot;
+        if (_targetMode == 2)
+        {
+            ref = nullptr;
+            for (ObjectGuid const& guid : npcs)
+            {
+                Unit* unit = botAI->GetUnit(guid);
+                if (unit && unit->IsAlive() && !_boss.empty() && MatchesNameOrEntry(botAI, unit, _boss))
+                {
+                    ref = unit;
+                    break;
+                }
+            }
+            if (!ref)
+                return false;
+        }
+
+        Unit* best = nullptr;
+        float bestDist = std::numeric_limits<float>::max();
+        for (ObjectGuid const& guid : npcs)
+        {
+            Unit* unit = botAI->GetUnit(guid);
+            if (!unit || !unit->IsAlive() || !MatchesNameOrEntry(botAI, unit, _add))
+                continue;
+            float dist = ref->GetExactDist2d(unit);
+            if (_range > 0.0f && dist > _range)
+                continue;
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = unit;
+            }
+        }
+        if (!best)
+            return false;
+        castTarget = best;
+    }
+
+    // Try each listed spell in order; the first the bot knows and has off cooldown
+    // fires (CastSpell returns false otherwise), so one rule serves every class.
+    for (std::string const& spell : _spells)
+        if (botAI->CastSpell(spell, castTarget))
+            return true;
+
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// tank_swap
+// ---------------------------------------------------------------------------
+void JsonTankSwapAction::Qualify(std::string const qual)
+{
+    Qualified::Qualify(qual);
+    _aura = JsonKv(qual, "aura");
+    _boss = JsonKv(qual, "boss");
+    _stacks = (uint32)std::strtoul(JsonKv(qual, "stacks", "1").c_str(), nullptr, 10);
+    if (_stacks == 0)
+        _stacks = 1;
+    _nearestDetect = JsonKv(qual, "detect") == "nearest";
+    _watchMainTank = JsonKv(qual, "watch") == "maintank";
+}
+
+bool JsonTankSwapAction::Execute(Event /*event*/)
+{
+    if (_aura.empty() || !botAI->IsTank(bot))
+        return false;
+
+    Unit* boss = nullptr;
+    if (_nearestDetect)
+    {
+        // Proximity find so a taunter that never threatens the boss (a Gluth chow
+        // off-tank) can still locate him.
+        GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
+        for (ObjectGuid const& guid : npcs)
+        {
+            Unit* unit = botAI->GetUnit(guid);
+            if (unit && unit->IsAlive() && MatchesNameOrEntry(botAI, unit, _boss))
+            {
+                boss = unit;
+                break;
+            }
+        }
+    }
+    else
+    {
+        boss = AI_VALUE2(Unit*, "find target", _boss);
+    }
+    if (!boss)
+        return false;
+
+    // Whose stacks gate the swap: the boss's current victim (symmetric ping-pong)
+    // or the designated main tank (one relief tank covers while the MT detoxes).
+    Unit* watched = nullptr;
+    if (_watchMainTank)
+    {
+        // Only the primary relief tank (assist #0) covers in maintank mode, so
+        // several off-tanks don't all pile onto the boss during the swap window
+        // (the others keep their normal job, e.g. holding adds). Same designated
+        // taunter the C++ Gluth swap used.
+        if (!botAI->IsAssistTankOfIndex(bot, 0))
+            return false;
+        watched = AI_VALUE(Unit*, "main tank");
+    }
+    else
+    {
+        watched = boss->GetVictim();
+    }
+    if (!watched || watched == bot)
+        return false;  // nobody loaded to relieve, or I'm already the active tank
+
+    // checkStack (5th arg) returns the aura only when it's at >= _stacks stacks,
+    // so a plain null check is the "loaded?" gate (no Aura definition needed here).
+    if (!botAI->GetAura(_aura, watched, false, false, (int)_stacks))
+        return false;  // the watched tank isn't loaded yet
+
+    // Take and hold the boss: get on it first, then force the class taunt. Holding
+    // (Attack) between taunts keeps the relieving tank glued to the boss until the
+    // gate clears, instead of sliding back to its other job.
+    if (bot->GetVictim() != boss)
+        return Attack(boss);
+
+    return botAI->DoSpecificAction("taunt spell", Event(), true);
 }
 
 // ---------------------------------------------------------------------------

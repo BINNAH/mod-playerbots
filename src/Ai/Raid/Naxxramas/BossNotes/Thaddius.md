@@ -137,22 +137,23 @@ No JSON strategy yet; existing C++ AI does:
 
 ## Implications for bot AI / strategy authoring
 
-- **Add death-sync is a HARD LIMIT (C++ only).** The "both adds must die within 5 s"
-  requirement involves monitoring the HP of two independently-tanked targets and
-  throttling DPS on the ahead one. The existing multiplier does a basic ≤40%
-  soft-throttle. There is no JSON shape or trigger that can express cross-target HP
-  comparison or enforce a coordinated simultaneous kill. This must stay in C++.
+- **Add death-sync is now DATA (was C++-only).** The "both adds must die within 5 s"
+  requirement — monitor two independently-tanked targets' HP, throttle DPS on the
+  ahead one — is expressed by the `target_hp_ahead` trigger (cross-target HP compare,
+  located by proximity scan so it's threat-independent) + a `suppress` rule listing
+  the `@damage` category token (zeros non-healing casts). That is the data form of
+  `ThaddiusGenericMultiplier`'s `≤40% / ≥3%` clamp. See `raid_strategies/thaddius.json`.
+  *(Built 2026-05-26; in-game tuning of `margin`/`below` still pending.)*
 
-- **Polarity grouping is a HARD LIMIT (C++ only — fixed anchors, not dynamic regroup).**
-  JSON `orbit`, `stack`, `spread` shapes take a fixed anchor; they have no concept
-  of "go stand near players with the same aura as me." The C++ `ThaddiusMovePolarityAction`
-  sidesteps this by using **pre-defined left/right fixed spots** mapped to polarity —
-  negative bots always go left, positive bots always go right. This works because the
-  spots are far enough apart that mismatched proximity is avoided, and all bots of the
-  same polarity converge at the same anchor. A JSON strategy could theoretically encode
-  two `stack` anchors (one per polarity) but would need a custom trigger to read the
-  bot's polarity aura — that trigger exists in C++ (`ThaddiusPhaseThaddiusTrigger` /
-  `ThaddiusMovePolarityAction`) and can't be replicated purely in JSON data today.
+- **Polarity grouping is now DATA (was thought C++-only).** The pessimism here
+  predated the `self_aura` trigger field. The C++ `ThaddiusMovePolarityAction` doesn't
+  dynamically regroup — it sends negative bots to **fixed left** spots and positive
+  bots to **fixed right** spots. That is exactly `encounter_active` (`self_aura`:
+  `"negative charge"` / `"positive charge"`, gated by NAME for 10/25 safety) driving a
+  per-polarity `stack_point` at those same six anchors. The 6 anchors are ported 1:1
+  in `thaddius.json`. `HasAura(name)` is an exact-length match and all the polarity
+  spell ids (28059/28062/28084/28085/29659/29660) are named `"Positive Charge"` /
+  `"Negative Charge"`, so the name gate matches whichever one lands.
 
 - **`find target` is threat-based; Thaddius is invisible until activation.**
   During the add phase, `find target "thaddius"` returns null (he has no threat list

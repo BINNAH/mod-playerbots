@@ -1,0 +1,54 @@
+{
+  "name": "grobbulus",
+  "boss": "grobbulus",
+  "_comment": "FULLY LEVEL-2 port of the C++ Grobbulus strategy (RaidNaxxStrategy.cpp InitTriggers + GrobbulusMultiplier); see BossNotes/Grobbulus.md. Single-phase fight -- complexity is purely positional. Zero Level-1 references: every rule is a generic shape + encounter_active trigger. This relies on three shape additions made for Grobbulus: (a) orbit_point gained an optional 'interval' ms for a STEPPED (cadence-paced) kite; (b) encounter_active gained 'self_aura'/'self_aura_present' to phase-gate on an aura the BOT carries (Mutating Injection); (c) a new 'position_vs_boss' shape (anchor radial_out|behind|front|left|right + distance + angle_offset + only_if_closer) replaces GrobbulusMoveAwayAction (radial_out) and GrobbulusGoBehindAction (behind). The GrobbulusMultiplier is the 'suppress' block. ONE ADDITION beyond C++: the off-tank tank_adds rule for Fallout Slimes (C++ left them to generic combat); delete it for a pure 1:1 port. Test 25-man; A/B with .rjson off.",
+  "rules": [
+    {
+      "_comment": "MAIN-TANK KITE = orbit_point STEPPED (= GrobbulusRotateAction: center 3281.23,-3310.38, r35, 8 segments, CW). interval=15000 -> advance one waypoint every ~15s, matching the C++ GrobbulusCloudTrigger cadence (one drag per Poison Cloud) so the tank parks and refreshes threat between drags instead of orbiting continuously. Priority 3 (relevance 63) + 'avoid aoe' suppressed for the tank (below) lets the orbit own tank movement; 'reach melee' is left alone so the tank stays in melee. (For a continuous kite instead, drop the interval param.)",
+      "trigger": { "shape": "encounter_active", "boss": "grobbulus", "role": "maintank" },
+      "actions": [
+        { "shape": "orbit_point", "params": { "x": 3281.23, "y": -3310.38, "radius": 35.0, "segments": 8, "clockwise": true, "interval": 15000 }, "priority": 3 }
+      ]
+    },
+    {
+      "_comment": "MUTATING INJECTION on a non-ranged bot (melee DPS or a tank -- C++ gated on !IsRanged) -> back off >=18y from the boss in any direction so the explosion-cloud lands in open ground. position_vs_boss anchor 'radial_out' (move straight out along the boss->bot bearing) + only_if_closer (yield once already >=18y, = GrobbulusMoveAway's 'maintain range' check). Phase-gated by self_aura on the BOT (no boss aura to read); role 'melee,tank' reproduces !IsRanged. Priority 2 = C++ ACTION_RAID+2.",
+      "trigger": { "shape": "encounter_active", "boss": "grobbulus", "role": "melee,tank", "self_aura": "mutating injection", "self_aura_present": true },
+      "actions": [
+        { "shape": "position_vs_boss", "params": { "anchor": "radial_out", "distance": 18.0, "only_if_closer": true }, "priority": 2 }
+      ]
+    },
+    {
+      "_comment": "MUTATING INJECTION on a ranged bot/healer -> run 24y BEHIND the boss to drop the cloud away from the stack. position_vs_boss anchor 'behind' (boss orientation + pi) + angle_offset 0.3927 (pi/8) reproduces GrobbulusGoBehindAction exactly. Self-aura gated; role 'ranged,healer' reproduces IsRanged. Priority 2 = C++ ACTION_RAID+2.",
+      "trigger": { "shape": "encounter_active", "boss": "grobbulus", "role": "ranged,healer", "self_aura": "mutating injection", "self_aura_present": true },
+      "actions": [
+        { "shape": "position_vs_boss", "params": { "anchor": "behind", "distance": 24.0, "angle_offset": 0.3927 }, "priority": 2 }
+      ]
+    },
+    {
+      "_comment": "RANGED with NO injection (the default ranged position) -> re-stack at room center (stack_point = GrobbulusMoveCenterAction = MoveInside 3281.23,-3310.38 r5). self_aura_present:false = 'while NOT carrying Mutating Injection'; stack_point yields once within 5y so ranged DPS/heal from the center stack. Priority 1 = C++ ACTION_RAID+1.",
+      "trigger": { "shape": "encounter_active", "boss": "grobbulus", "role": "ranged,healer", "self_aura": "mutating injection", "self_aura_present": false },
+      "actions": [
+        { "shape": "stack_point", "params": { "x": 3281.23, "y": -3310.38, "radius": 5.0 }, "priority": 1 }
+      ]
+    },
+    {
+      "_comment": "ADDITION (not in the C++ strategy): off-tank herds Fallout Slimes (entry 16290, verified, spawned where Slime Spray hits) onto the main tank/boss for cleave. tank_adds self-detects them from the 'attackers' list (they SetInCombatWithZone on spawn), self-gates to assist-tank #0, and does attack->taunt->reposition. Bot-only slot (human never required). DELETE this rule for a pure 1:1 port.",
+      "trigger": { "shape": "encounter_active", "boss": "grobbulus", "role": "offtank" },
+      "actions": [
+        { "shape": "tank_adds", "params": { "add": "fallout slime", "boss": "grobbulus" }, "priority": 2 }
+      ]
+    }
+  ],
+  "suppress": [
+    {
+      "_comment": "Data-driven GrobbulusMultiplier, part 1: zero 'avoid aoe' for the MAIN TANK only, so the tank does NOT flee the Poison Clouds it kites through (it must keep dragging the boss along the orbit). This is what lets orbit_point @ priority 3 win the tick. 'reach melee' is intentionally NOT suppressed so the tank stays in melee range of the boss it's kiting.",
+      "trigger": { "shape": "encounter_active", "boss": "grobbulus", "role": "maintank" },
+      "actions": ["avoid aoe"]
+    },
+    {
+      "_comment": "Data-driven GrobbulusMultiplier, part 2: zero 'combat formation move' for ALL bots while Grobbulus is engaged (no formation-follow during the fight -- it would re-pull bots toward the master every tick and fight the injection-spread / re-center movement).",
+      "trigger": { "shape": "encounter_active", "boss": "grobbulus" },
+      "actions": ["combat formation move"]
+    }
+  ]
+}

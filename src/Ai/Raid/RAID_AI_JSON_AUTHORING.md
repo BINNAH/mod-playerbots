@@ -79,12 +79,17 @@ role and phase. **Evaluated per bot**, so one rule fans out correctly.
 |----------------|---------|-------------|----------------------------------------------------------------|
 | `boss`         | string  | file `boss` | Creature name to detect (`"find target"`, matched by name).    |
 | `role`         | string  | (all)       | Comma-list, OR semantics (see role tokens below).              |
+| `class`        | string  | (all)       | Comma-list of class names, AND-ed with `role`: `warrior, paladin, hunter, rogue, priest, deathknight` (or `dk`), `shaman, mage, warlock, druid`. Targets a class-specific job — e.g. `role:ranged, class:"mage,hunter"` for the Gluth chow kiters. |
+| `detect`       | string  | `threat`    | How the boss is located. `threat` = the find-target / threat list. `nearest` = a **proximity scan** (`"nearest npcs"`, ~sight range), which is **threat-independent** — it fires for a bot that never threatens the boss (a kiter / off-tank who only ever touches the adds). Everyone who actually fights the boss can stay on the default. |
 | `boss_aura`    | string  | (none)      | Phase gate: an aura **on the boss**, by name (e.g. `locust swarm`). |
 | `aura_present` | bool    | true        | `true`: only when the aura is up. `false`: only when it's down. |
 | `include_cast` | bool    | true        | Also treat the phase as active while the boss is **casting** a spell of the same name — so the raid reacts at cast-start, not after the aura lands. Set `false` to gate strictly on the aura. |
+| `self_aura`    | string  | (none)      | Phase gate on an aura **on the bot itself** (e.g. `mutating injection`) — the self-debuff case `boss_aura` can't cover (Mutating Injection runner, Thaddius polarity, Festergut spore). Checked with `HasAura(name, bot)`. |
+| `self_aura_present` | bool | true   | `true`: only while the bot carries `self_aura`. `false`: only while it does not (e.g. the "injection cleared, re-stack" default). |
 
 ```json
 { "shape": "encounter_active", "role": "maintank", "boss_aura": "locust swarm", "aura_present": true }
+{ "shape": "encounter_active", "role": "ranged,healer", "self_aura": "mutating injection", "self_aura_present": true }
 ```
 
 **Role tokens:** `all`, `maintank`, `offtank`, `tank`, `notmaintank`, `nontank`,
@@ -127,15 +132,65 @@ Pair it with class-spell / external actions (by name) that self-gate on
 knowability + cooldown, so listing several under one rule fires exactly the ones
 the present bots can cast — same idiom as Four Horsemen's "opening defensive".
 
+### Trigger shape `adds_near` (→ `JsonAddsNearTrigger`)
+Fires while at least `count` living creatures matching `add` are within `range` of
+the bot (`of: self`) or the boss (`of: boss`). Detection is a **proximity scan**
+(`"nearest npcs"`), so it is **threat-independent** — it sees adds (and the boss)
+a bot has no aggro on, the gate the threat-based `encounter_active` can't give
+kiters / off-tanks. Use it to gate add-control actions (snares / AoE-threat) and
+count-based switches (e.g. *"start kiting once ≥ 6 chow pile on me"* → a higher-
+priority orbit rule whose trigger is `count: 6`, with the hold rule below it).
+
+| Field   | Type        | Default | Meaning                                                            |
+|---------|-------------|---------|--------------------------------------------------------------------|
+| `add`   | string\|int | **req** | Add name or entry id to count.                                     |
+| `range` | float       | `0`     | Max distance from the reference point (`0` = anywhere in sight).   |
+| `count` | int         | `1`     | Minimum number within range for the trigger to fire.               |
+| `of`    | string      | `self`  | Reference point for `range`: `self` (the bot) or `boss`.           |
+| `role`  | string      | (all)   | Optional role filter (same tokens as `encounter_active`) so only e.g. off-tanks react. |
+| `class` | string      | (all)   | Optional class filter (same tokens as `encounter_active`), AND-ed with `role`. |
+| `boss`  | string      | file `boss` | Boss name (required when `of: boss`).                          |
+
+```json
+{ "shape": "adds_near", "add": "zombie chow", "range": 9.0, "count": 6, "of": "self", "role": "offtank" }
+```
+
+### Trigger shape `target_hp_ahead` (→ `JsonTargetHpAheadTrigger`)
+Fires while the bot's **current target** is at/below `below` HP% **and** at least
+one **other** named creature is `margin` HP% (or more) **higher**. The
+cross-target HP compare a single-target gate can't do: the **death-sync throttle**
+for twin adds that must die together (Thaddius's Feugen + Stalagg). Pair it with a
+`suppress` rule listing the **`@damage`** category token (below) to zero the bot's
+damage casts while *its* add is too far ahead, so the other catches up — the data
+form of `ThaddiusGenericMultiplier`'s `≤40% / ≥3%` clamp. The `others` are located
+by a **proximity scan** (`"nearest npcs"`), so it is **threat-independent**: a bot
+reads both adds' HP even though it only ever threatens the one it tanks/DPSes. The
+bot's own current target is excluded from `others`, so naming both adds is fine.
+Evaluated per bot (it reads *that* bot's target), so the bots on the **ahead**
+(lower-HP) add throttle while the bots on the behind add keep hitting.
+
+| Field    | Type        | Default | Meaning                                                                 |
+|----------|-------------|---------|-------------------------------------------------------------------------|
+| `others` | string\|int\|array | **req** | Creature name(s)/entry id(s) to compare the bot's current target against. |
+| `margin` | float       | `0`     | Throttle only when an `other` is this many HP% **above** the bot's target. |
+| `below`  | float       | `100`   | Only throttle once the bot's target is at/below this HP% (the execute-range gate; `100` = always). |
+
+```json
+{ "shape": "target_hp_ahead", "others": ["feugen", "stalagg"], "margin": 3, "below": 40 }
+```
+
 ### Action shapes
 
 | Shape             | Class                       | `params`                                  | Behavior |
 |-------------------|-----------------------------|-------------------------------------------|----------|
-| `orbit_point`     | `JsonOrbitPointAction`      | `x, y, radius, segments, clockwise`       | Continuously walk the ring around (x,y) — a real orbit/kite. |
-| `stack_point`     | `JsonStackPointAction`      | `x, y, radius`                            | Move to (x,y) and stay within `radius` (tight raid stack). |
+| `orbit_point`     | `JsonOrbitPointAction`      | `x, y, radius, segments, clockwise`, `[interval]` | Walk the ring around (x,y). Default = a continuous orbit/kite. Optional **`interval`** (ms) makes it **stepped**: the bot parks on the current waypoint and advances one slot only every `interval` ms — a cadence-paced kite that holds threat between drags (e.g. Grobbulus's ~15s-per-Poison-Cloud rotation). `0`/absent = continuous (back-compat). |
+| `stack_point`     | `JsonStackPointAction`      | `x, y, radius`, `hold` (bool), `z` (optional) | Move to (x,y) and stay within `radius` (tight raid stack). **`hold:true`** = once parked, *own the tick* (stand still) instead of yielding — stops a bot parked **off** the boss with no current job (e.g. a Gluth off-tank between chow waves) from falling through to generic combat and running at the boss. **`z`** = an explicit anchor height for an **elevated** spot (Thaddius add platforms): moves in 3D so the bot climbs instead of yielding on the floor below. Omit both for a plain ground stack. |
 | `spread`          | `JsonSpreadAction`          | `radius`, `min_interval` (ms, default 3000) | Move away from the nearest **other ranged/healer** within `radius`. Ignores the melee/tank stack and repositions at most once per `min_interval` so casters aren't interrupted. Yields when clear. |
-| `attack`          | `JsonAttackAction`          | `targets` (name/entry, string or array), `boss` (fallback, default file `boss`), `detect` (`threat`\|`nearest`), `select` (`lowest_hp`\|`nearest`) | Pick one creature to attack — the lowest-HP / nearest match from `targets`, falling back to `boss` when none are alive. **`detect`** = `threat` scans the attacker/threat list (default); `nearest` scans nearby NPCs so **off-threat** objects are visible (Web Wrap cocoons, un-aggroed adds). **`select`** = `lowest_hp` (default when `detect:threat`) is "kill adds first"; `nearest` (default when `detect:nearest`) is closest-first. Matches by name **or** entry id; sticks to its pick until it dies (no cast-cancel thrash); yields when already on target. To just focus one creature (e.g. the boss), name it in `targets`. Merges the former `attack_target`, `attack_priority` (`threat`+`lowest_hp`) and `attack_nearest` (`nearest`+`nearest`). |
+| `attack`          | `JsonAttackAction`          | `targets` (name/entry, string or array), `boss` (fallback, default file `boss`), `detect` (`threat`\|`nearest`), `select` (`lowest_hp`\|`nearest`), `sticky` (bool, default true), `max_hp_pct`, `max_range` | Pick one creature to attack — the lowest-HP / nearest match from `targets`, falling back to `boss` when none are alive. **`detect`** = `threat` scans the attacker/threat list (default); `nearest` scans nearby NPCs so **off-threat** objects are visible (Web Wrap cocoons, un-aggroed adds). **`select`** = `lowest_hp` (default when `detect:threat`) is "kill adds first"; `nearest` (default when `detect:nearest`) is closest-first. **`max_hp_pct`** / **`max_range`** (both default `0` = off) filter the candidate set to adds at/below that HP% and/or within that many yards — so `{targets:"zombie chow", max_hp_pct:10, max_range:35}` self-gates to the Decimate burn (chow are only candidates while at 5%, else it falls back to `boss`), no separate phase trigger needed. **`sticky`** (default `true`) keeps the bot on its current match until it dies — no cast-cancel thrash when two candidates' "best" flips tick-to-tick. **`sticky:false`** re-picks the best every tick: use it with `select:nearest` so a tank yanked to the other add by **Magnetic Pull** swaps to the now-nearest add instead of running back to its original target (Thaddius). Matches by name **or** entry id; yields when already on target. To just focus one creature (e.g. the boss), name it in `targets`. Merges the former `attack_target`, `attack_priority` (`threat`+`lowest_hp`) and `attack_nearest` (`nearest`+`nearest`). |
 | `tank_adds`       | `JsonTankAddsAction`        | `add`, `boss` (default file `boss`)       | Off-tank (assist-tank #0) gathers every living add named `add` and drags it onto the main tank / boss. attack → taunt → reposition. |
+| `tank_swap`       | `JsonTankSwapAction`        | `aura` (debuff name), `stacks` (default 1), `boss` (default file `boss`), `detect` (`threat`\|`nearest`), `watch` (`victim`\|`maintank`) | **A16 stacking-debuff tank rotation.** While a tank carries `stacks`+ of `aura` (Mortal Wound, Crunch Armor, Gormok Impale, …), another tank taunts the boss off them. Self-gating (only acts when a swap is due) so wire it under any encounter trigger. Casts via `DoSpecificAction("taunt spell")`, which **force-runs** the class taunt regardless of relevance — so a `suppress` of `"taunt spell"` (to stop a relieved tank auto-taunting back) doesn't block the swap. **`watch`** = `victim` (default): gate on the boss's **current victim** — symmetric ping-pong where the fresh tank has low stacks so no one re-taunts until they rebuild (Kologarn / Festergut / AQ40). `maintank`: gate on the designated **main tank**, so every other tank holds the boss while the MT's stacks decay (Gluth's Mortal Wound — off-tank covers, then releases). `detect:nearest` lets a taunter that doesn't yet threaten the boss locate him. |
+| `snare_area`      | `JsonSnareAreaAction`       | `spells` (array, ordered), `add` (name/entry), `target` (`self`\|`nearest`\|`leak`), `range`, `boss` (for `leak`) | Cast a control / AoE-threat spell on the adds while a **lower-priority** movement shape (`orbit_point` / `stack_point`) holds the path. Tries each spell in `spells` the bot **knows and has off cooldown**, in order, firing the first that lands — so one rule can list every class's option and each bot fires its own (the Four Horsemen "opening defensive" idiom; generic form of the C++ `CastZombieThreat`). **`target`** = `self` (cast on the bot for self/ground-centered AoE — Frost Nova, Consecration, D&D; requires ≥1 matching add within `range` so a cooldown isn't wasted), `nearest` (the nearest matching add within `range` of the bot), or `leak` (the add **nearest the boss** — the one about to reach it — within `range` of the boss). **Yields** when no add qualifies / nothing is castable, so it layers cleanly over the movement underneath. The Blink/Disengage escape is just this shape: `{spells:["Blink","Disengage"], target:"self"}` under an `adds_near {range:6, count:1}`. |
+| `position_vs_boss`| `JsonPositionVsBossAction`  | `anchor` (`radial_out`\|`behind`\|`front`\|`left`\|`right`), `distance`, `angle_offset`, `only_if_closer`, `boss` | Move to a single spot defined **relative to the boss** (A3/A4). `radial_out` = straight out along the boss→bot bearing (back off wherever you stand); the facing modes = a bearing off the boss's **orientation** (`behind`=+π, `front`=0, `left`=+π/2, `right`=−π/2) plus `angle_offset` (extra radians). `only_if_closer:true` yields once already ≥ `distance` away (a "maintain range" check). Generic form of Grobbulus's move-away (`radial_out`+`only_if_closer`) and go-behind (`behind`+`angle_offset`); also Onyxia move-to-side, Yogg face-away, etc. |
 | `timed_safe_zone` | `JsonTimedSafeZoneAction`   | `zones` (array of `[x,y]`), `pattern` (array of zone indices), `z`, `first_at` (ms), `interval` (ms), `hold` (bool), `cast_while_moving` (bool), `tolerance` (default 5.0) | **A6 eruption dance** as data. The room has fixed safe `zones`; on a deterministic clock one zone after another is the only safe spot. Predicts the current safe zone (`pattern[k]` where `k` counts eruptions from `first_at`/`interval`) and stands on it. The generic form of `HeiganDanceAction`. `hold:true` = own the tick even when parked (tight cadence, no casting); `hold:false` = yield once parked so rotations run between eruptions. `cast_while_moving:true` = while **en route**, yield the tick so the bot's rotation fires INSTANTS as it relocates (the engine refuses cast-time spells while moving, so only instants come out) — **requires a `suppress` rule** (below) zeroing the movement-hijackers, else they grab the yielded tick. Per-bot clock auto-anchors on first run and re-anchors after a long idle gap (the rule going dormant across the *other* phase), so gate each phase with its own rule + cadence. |
 
 ```json
@@ -146,6 +201,13 @@ the present bots can cast — same idiom as Four Horsemen's "opening defensive".
 { "shape": "attack",          "params": { "targets": 16486, "detect": "nearest", "boss": "maexxna" }, "priority": 2 }
 { "shape": "tank_adds",       "params": { "add": "crypt guard", "boss": "anub'rekhan" }, "priority": 2 }
 { "shape": "timed_safe_zone", "params": { "zones": [[2756.0,-3704.0],[2794.9,-3668.1]], "pattern": [3,2,1,0,1,2], "z": 276.54, "first_at": 7000, "interval": 4000, "hold": true }, "priority": 32 }
+{ "shape": "orbit_point",     "params": { "x": 3281.23, "y": -3310.38, "radius": 35.0, "segments": 8, "clockwise": true, "interval": 15000 }, "priority": 3 }
+{ "shape": "position_vs_boss","params": { "anchor": "radial_out", "distance": 18.0, "only_if_closer": true }, "priority": 2 }
+{ "shape": "position_vs_boss","params": { "anchor": "behind", "distance": 24.0, "angle_offset": 0.3927 }, "priority": 2 }
+{ "shape": "snare_area",      "params": { "spells": ["Frost Nova","Arcane Explosion","Frost Trap"], "add": "zombie chow", "target": "self", "range": 10.0 }, "priority": 2 }
+{ "shape": "snare_area",      "params": { "spells": ["Concussive Shot","Cone of Cold"], "add": "zombie chow", "target": "leak", "boss": "gluth" }, "priority": 2 }
+{ "shape": "tank_swap",       "params": { "aura": "mortal wound", "stacks": 5, "boss": "gluth", "detect": "nearest", "watch": "maintank" }, "priority": 5 }
+{ "shape": "tank_swap",       "params": { "aura": "crunch armor", "stacks": 3 }, "priority": 3 }
 ```
 
 > **Priority note for `timed_safe_zone` (and any movement shape that must beat
@@ -179,12 +241,30 @@ relevance forced to 0, so it can't be selected. Names are matched against the
 action's `getName()` — use the registered name (`"avoid aoe"`, `"reach spell"`,
 `"reach melee"`, `"combat formation move"`, `"flee"`, …).
 
+**Category token `@damage`** — instead of (or alongside) action names, list
+`"@damage"` to zero **every non-healing damage cast** (the type filter
+`dynamic_cast<CastSpellAction*> && !CastHealingSpellAction`, which a name list
+can't express). This is the data form of the C++ DPS-clamp multipliers: pair it
+with the `target_hp_ahead` trigger for a twin-add death-sync throttle (slow the
+ahead add's DPS so the other catches up). Soft throttle — like the C++ original,
+melee auto-attacks aren't suppressed, only casts.
+
 The primary use: let a movement shape **yield the tick for instant casts**
 (`cast_while_moving`) without the eruption-dodge / reach / formation actions
 grabbing the yielded tick and dragging the bot off its route. Pick the suppress
 list deliberately — e.g. leave `"reach melee"` *un*-suppressed if melee still need
 to close on a tanked boss during the phase. (This also lets a Level-1 port carry a
 multiplier its C++ original relied on, like four_horsemen.)
+
+> **Yielding shapes must suppress the C++ instance-strategy action that shares
+> their trigger.** `.rjson on` strips the C++ instance strategy, but
+> `PlayerbotAI::ApplyInstanceStrategies` **re-adds it on zone-in/reset** — so the
+> C++ strategy is usually still loaded *alongside* json-raid. A shape that *holds*
+> the tick masks this (it wins at its priority and the C++ action never runs). A
+> shape that *yields* does not: the C++ action (e.g. `heigan dance` @ `ACTION_RAID+3`)
+> catches the yielded tick and holds it, so the rotation never fires. Add that C++
+> action's name to the `suppress` list. (Diagnose from `Playerbots.log`: the C++
+> action's `- OK` count tracking your shape's `- FAILED`/yield count is the tell.)
 
 ---
 
@@ -249,14 +329,23 @@ Shapes wire and parameterize; they don't implement novel logic. Keep these in C+
 and reference them by name (Level 1):
 
 - Positional phase clocks where the safe spot is **reactive or random** (Sapphiron
-  flight — dodge wherever the ice blocks land; Thaddius polarity swaps — keyed on
-  the bot's own debuff). The *movement* is bespoke. (Two special cases are now
-  generic: a fixed-pattern timed safe zone like the **Heigan dance** is
-  `timed_safe_zone`; a periodic *cast* you only need to pre-mitigate is
-  `pre_cast_window`.)
+  flight — dodge wherever the ice blocks land). The *movement* is bespoke. (Several
+  special cases are now generic: a fixed-pattern timed safe zone like the **Heigan
+  dance** is `timed_safe_zone`; a periodic *cast* you only need to pre-mitigate is
+  `pre_cast_window`; and **Thaddius polarity** — once thought bespoke because it's
+  "keyed on the bot's own debuff" — is `encounter_active` + `self_aura` driving a
+  per-polarity `stack_point`, because the C++ already groups by *fixed* left/right
+  anchors, not dynamic regroup.)
+- **Vertical / jump transitions** (z-platform → floor drops via `JumpTo`, e.g.
+  Thaddius's adds-platform → low-platform transition). No movement shape paths over
+  a navmesh gap. Detection compounds it: a non-attackable boss with the adds dead
+  has no threatener, so no `encounter_active` rule fires during the transition.
 - Multi-actor relays / assignments (Four Horsemen corner rotation, Vashj/Kael,
   Yogg, Lich King, Mimiron, Razuvious mind-control).
 - Anything reading boss script internals (channel state, `_currentSection`).
+- **Cross-target / coordinated-kill HP comparisons** are *no longer* a hard limit:
+  `target_hp_ahead` + the `@damage` suppress token express twin-add death-sync
+  (Thaddius) as data.
 
 If you find yourself wanting a new *kind* of behavior repeatedly, that's a signal
 to add a new generic shape (below) rather than a one-off C++ action.

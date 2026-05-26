@@ -40,6 +40,9 @@ public:
         creators["json attackpick"] = &JsonStrategyActionContext::json_attackpick;
         creators["json tankadds"] = &JsonStrategyActionContext::json_tankadds;
         creators["json safezone"] = &JsonStrategyActionContext::json_safezone;
+        creators["json posboss"] = &JsonStrategyActionContext::json_posboss;
+        creators["json snarearea"] = &JsonStrategyActionContext::json_snarearea;
+        creators["json tankswap"] = &JsonStrategyActionContext::json_tankswap;
     }
 
 private:
@@ -49,6 +52,9 @@ private:
     static Action* json_attackpick(PlayerbotAI* ai) { return new JsonAttackAction(ai); }
     static Action* json_tankadds(PlayerbotAI* ai) { return new JsonTankAddsAction(ai); }
     static Action* json_safezone(PlayerbotAI* ai) { return new JsonTimedSafeZoneAction(ai); }
+    static Action* json_posboss(PlayerbotAI* ai) { return new JsonPositionVsBossAction(ai); }
+    static Action* json_snarearea(PlayerbotAI* ai) { return new JsonSnareAreaAction(ai); }
+    static Action* json_tankswap(PlayerbotAI* ai) { return new JsonTankSwapAction(ai); }
 };
 
 class JsonStrategyTriggerContext : public NamedObjectContext<Trigger>
@@ -58,11 +64,15 @@ public:
     {
         creators["json encounter"] = &JsonStrategyTriggerContext::json_encounter;
         creators["json precast"] = &JsonStrategyTriggerContext::json_precast;
+        creators["json addsnear"] = &JsonStrategyTriggerContext::json_addsnear;
+        creators["json hpahead"] = &JsonStrategyTriggerContext::json_hpahead;
     }
 
 private:
     static Trigger* json_encounter(PlayerbotAI* ai) { return new JsonEncounterActiveTrigger(ai); }
     static Trigger* json_precast(PlayerbotAI* ai) { return new JsonPreCastWindowTrigger(ai); }
+    static Trigger* json_addsnear(PlayerbotAI* ai) { return new JsonAddsNearTrigger(ai); }
+    static Trigger* json_hpahead(PlayerbotAI* ai) { return new JsonTargetHpAheadTrigger(ai); }
 };
 
 #endif

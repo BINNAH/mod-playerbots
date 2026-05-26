@@ -66,9 +66,21 @@ threat resets, or movement scripted by the boss itself. The complexity is entire
   Each hit spawns a Fallout Slime add at the struck target's location.
 - **9 min (25-man):** Berserk — enrage wipe if boss not dead.
 
-## Existing C++ AI — no JSON strategy yet
+## JSON strategy — fully Level-2 (`raid_strategies/grobbulus.json`)
 
-No JSON strategy yet; existing C++ AI does:
+A fully Level-2 `json-raid` strategy now exists and mirrors the C++ below 1:1
+(plus one additive Fallout-Slime `tank_adds` rule). It was the driver for three
+generic shape additions: `orbit_point` gained an optional `interval` ms (stepped
+kite), `encounter_active` gained `self_aura`/`self_aura_present` (phase-gate on an
+aura the BOT carries), and a new `position_vs_boss` shape (anchor radial_out|behind|
+front|left|right + distance + angle_offset + only_if_closer) absorbed the two
+move-relative-to-boss actions. The kite that was a "PARTIAL HARD LIMIT" below is no
+longer one — `orbit_point` with `interval: 15000` reproduces the cadence-paced
+rotation. The C++ AI stays as the `.rjson off` fallback.
+
+## Existing C++ AI (the JSON port mirrors this)
+
+Existing C++ AI does:
 
 - **`GrobbulusRotateAction`** (main tank only, has-aggro gate): `RotateAroundTheCenterPointAction`
   around `3281.23, -3310.38`, radius 35 y, 8 waypoints, clockwise. Fires when
@@ -96,18 +108,20 @@ No JSON strategy yet; existing C++ AI does:
 
 ## Implications for bot AI / strategy authoring
 
-- **Tank kite path is a PARTIAL HARD LIMIT.** The orbit mechanic (`GrobbulusRotateAction`,
-  radius 35, 8 waypoints) cannot be reproduced in the current json-raid data layer —
-  it requires a timed positional step every 15 s driven by `GrobbulusCloudTrigger`.
-  The json layer can express `orbit_point` but has no trigger wiring to pace it by the
-  cloud cast. Authoring a JSON strategy today would need to coexist with the C++ kite
-  logic, not replace it. Treat kite-step as C++ territory.
-- **Mutating Injection spread IS data-expressible in principle.** The move-away
-  distance (18 y melee, 24 y ranged behind) and the return-to-center logic map onto
-  `move_away`/`spread` + `attack` shapes — but the trigger must gate on the AURA NAME
-  `"mutating injection"` (id `28169`), not on encounter state, because there is no
-  phase clock. The existing C++ implementation already handles this correctly and is
-  the path of least resistance.
+- **Tank kite path — NO LONGER a hard limit.** Originally flagged as un-portable
+  because the orbit steps every 15 s on `GrobbulusCloudTrigger`. Resolved by giving
+  `orbit_point` an optional `interval` ms: `interval: 15000` parks the tank on a
+  waypoint and advances one slot every ~15 s, matching the cloud cadence without any
+  boss-trigger wiring (a pure-clock approximation — Poison Cloud is a fixed 15 s
+  cadence anyway). The JSON kite (`orbit_point` + `interval`) now stands in for
+  `GrobbulusRotateAction`.
+- **Mutating Injection spread IS data-expressible — and now ported.** Gating is by
+  the AURA NAME `"mutating injection"` (id `28169`) on the BOT, via the new
+  `encounter_active` `self_aura` field (no boss-aura / phase clock needed). The two
+  moves are the new `position_vs_boss` shape: melee = `anchor: radial_out, distance:
+  18, only_if_closer: true` (= `GrobbulusMoveAway`); ranged = `anchor: behind,
+  distance: 24, angle_offset: 0.3927` (= `GrobbulusGoBehind`). Return-to-center is
+  `stack_point` (= `GrobbulusMoveCenter`).
 - **Slime Spray Fallout Slime adds are data-expressible** with `tank_adds` on entry
   `16290`. They `SetInCombatWithZone` immediately so they appear in the "attackers"
   list; an assist-tank action can gather and cleave them. However, Slimes spawn at

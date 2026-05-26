@@ -15,13 +15,19 @@
 //            maintank|offtank|tank|notmaintank|nontank|ranged|melee|healer|dps|all
 //   - aura : phase gate on a boss aura by name (e.g. "locust swarm")
 //   - has  : 1 = require the aura present, 0 = require it absent (default 1)
+//   - detect : how the boss is located. "threat" (default) = the find-target /
+//              threat list. "nearest" = a proximity scan ("nearest npcs"), which
+//              is THREAT-INDEPENDENT -- it sees the boss even for a bot that never
+//              builds threat on him (kiters / off-tanks who only ever touch the
+//              adds). Use it to gate their rules; everyone who actually fights the
+//              boss can stay on the cheaper default.
 //
 // Evaluated per-bot, so the same rule string fans out to the right bots. This
 // one trigger shape expresses "who + when" for the whole JSON catalog.
 //
 // Qualifier formats (both accepted):
 //   "anub'rekhan"                                  (bare boss name; no filters)
-//   "boss=anub'rekhan|role=maintank|aura=locust swarm|has=1"   (kv form)
+//   "boss=anub'rekhan|role=maintank|aura=locust swarm|has=1|detect=threat"  (kv form)
 class JsonEncounterActiveTrigger : public Trigger, public Qualified
 {
 public:
@@ -29,6 +35,46 @@ public:
 
     bool IsActive() override;
     std::string const getName() override { return "json encounter::" + qualifier; }
+};
+
+// Shape "adds_near": fires while at least `count` living creatures matching `add`
+// (name or entry id) are within `range` yards of the bot (of=self, the default)
+// or the boss (of=boss; needs a `boss` name). Detection is a proximity scan
+// ("nearest npcs"), so it is THREAT-INDEPENDENT -- it sees adds/boss this bot has
+// no aggro on, the gate the threat-based encounter_active can't give kiters /
+// off-tanks. Optionally narrowed by `role` (same comma-list tokens as
+// encounter_active) so e.g. only off-tanks react to a chow pile-up. Drives
+// add-control rules (snare / AoE-threat) and count-based switches ("kite once
+// >= 6 chow pile on me"). Qualifier:
+// "add=<name/entry>|range=<y>|count=<n>|of=<self|boss>|role=<csv>|boss=<name>".
+class JsonAddsNearTrigger : public Trigger, public Qualified
+{
+public:
+    JsonAddsNearTrigger(PlayerbotAI* ai) : Trigger(ai, "json addsnear") {}
+
+    bool IsActive() override;
+    std::string const getName() override { return "json addsnear::" + qualifier; }
+};
+
+// Shape "target_hp_ahead": fires while the bot's CURRENT TARGET is at/below
+// `below` HP% AND at least one OTHER named creature is >= `margin` HP% higher.
+// The cross-target HP compare a single-target trigger can't do: the death-sync
+// throttle for twin adds that must die together (Thaddius's Feugen + Stalagg).
+// Pair it with a `suppress` rule listing the "@damage" category token to zero
+// the bot's damage casts while its add is too far ahead, so the other catches
+// up — the data form of ThaddiusGenericMultiplier's <=40%/>=3% DPS clamp. The
+// `others` are located by a proximity scan ("nearest npcs"), so it is
+// THREAT-INDEPENDENT: a bot reads both adds' HP even though it only ever
+// threatens the one it tanks/DPSes. The bot's own current target is excluded
+// from `others`, so naming both adds is fine.
+// Qualifier: "others=<name/entry csv>|margin=<pct>|below=<pct>".
+class JsonTargetHpAheadTrigger : public Trigger, public Qualified
+{
+public:
+    JsonTargetHpAheadTrigger(PlayerbotAI* ai) : Trigger(ai, "json hpahead") {}
+
+    bool IsActive() override;
+    std::string const getName() override { return "json hpahead::" + qualifier; }
 };
 
 // Shape "pre_cast_window": fires in the short window just BEFORE a boss's

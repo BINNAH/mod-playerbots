@@ -18,6 +18,25 @@ RaidJsonRuleSet& RaidJsonRuleSet::instance()
     return inst;
 }
 
+RaidJsonMode& RaidJsonMode::instance()
+{
+    static RaidJsonMode inst;
+    return inst;
+}
+
+void RaidJsonMode::Set(ObjectGuid bot, bool on)
+{
+    if (on)
+        _bots.insert(bot);
+    else
+        _bots.erase(bot);
+}
+
+bool RaidJsonMode::IsActive(ObjectGuid bot) const
+{
+    return _bots.find(bot) != _bots.end();
+}
+
 std::string RaidJsonRuleSet::ResolveDir() const
 {
     // Resolved relative to the worldserver working directory (the `server/`
@@ -32,10 +51,12 @@ std::string RaidJsonRuleSet::ResolveDir() const
 // Encode the orbit shape's tunables into the "::qualifier" the factory hands to
 // JsonOrbitPointAction::Qualify. Fixed-precision so identical params always
 // produce the same cache key.
-static std::string OrbitQualifier(float x, float y, float radius, uint32 segments, bool clockwise)
+static std::string OrbitQualifier(float x, float y, float radius, uint32 segments, bool clockwise,
+                                  uint32 intervalMs)
 {
-    char buf[160];
-    std::snprintf(buf, sizeof(buf), "%.4f,%.4f,%.4f,%u,%d", x, y, radius, segments, clockwise ? 1 : 0);
+    char buf[192];
+    std::snprintf(buf, sizeof(buf), "%.4f,%.4f,%.4f,%u,%d,%u", x, y, radius, segments, clockwise ? 1 : 0,
+                  intervalMs);
     return std::string(buf);
 }
 
@@ -70,12 +91,35 @@ static bool ResolveTrigger(json const& t, std::string const& fileBoss,
         std::string role = t.value("role", std::string());
         if (!role.empty())
             q += "|role=" + role;
+        std::string klass = t.value("class", std::string());
+        if (!klass.empty())
+            q += "|class=" + klass;
+        // detect: how to locate the boss. "threat" (default) = find-target /
+        // threat list; "nearest" = a proximity scan that works threat-independently
+        // (for kiters / off-tanks who never threaten the boss).
+        std::string detect = t.value("detect", std::string());
+        if (!detect.empty())
+        {
+            if (detect != "threat" && detect != "nearest")
+            {
+                errors.push_back(fname + ": encounter_active 'detect' must be 'threat' or 'nearest'");
+                return false;
+            }
+            q += "|detect=" + detect;
+        }
         std::string aura = t.value("boss_aura", std::string());
         if (!aura.empty())
         {
             bool present = t.value("aura_present", true);
             bool includeCast = t.value("include_cast", true);
             q += "|aura=" + aura + "|has=" + (present ? "1" : "0") + "|cast=" + (includeCast ? "1" : "0");
+        }
+        // Self-aura phase gate: an aura on the BOT (e.g. "mutating injection").
+        std::string selfAura = t.value("self_aura", std::string());
+        if (!selfAura.empty())
+        {
+            bool selfPresent = t.value("self_aura_present", true);
+            q += "|self=" + selfAura + "|selfhas=" + (selfPresent ? "1" : "0");
         }
         out = "json encounter::" + q;
         return true;
@@ -117,6 +161,81 @@ static bool ResolveTrigger(json const& t, std::string const& fileBoss,
         if (!role.empty())
             q += "|role=" + role;
         out = "json precast::" + q;
+        return true;
+    }
+    if (shape == "adds_near")
+    {
+        std::string add;
+        if (t.contains("add"))
+            add = t["add"].is_number_integer() ? std::to_string(t["add"].get<int>())
+                                               : t["add"].get<std::string>();
+        if (add.empty())
+        {
+            errors.push_back(fname + ": adds_near needs an 'add' (name or entry id)");
+            return false;
+        }
+        float range = t.value("range", 0.0f);
+        uint32 count = t.value("count", 1u);
+        std::string of = t.value("of", std::string("self"));
+        if (of != "self" && of != "boss")
+        {
+            errors.push_back(fname + ": adds_near 'of' must be 'self' or 'boss'");
+            return false;
+        }
+        char rbuf[32];
+        std::snprintf(rbuf, sizeof(rbuf), "%.4f", range);
+        std::string q = "add=" + add + "|range=" + rbuf + "|count=" + std::to_string(count) + "|of=" + of;
+        std::string role = t.value("role", std::string());
+        if (!role.empty())
+            q += "|role=" + role;
+        std::string klass = t.value("class", std::string());
+        if (!klass.empty())
+            q += "|class=" + klass;
+        if (of == "boss")
+        {
+            std::string boss = t.value("boss", fileBoss);
+            if (boss.empty())
+            {
+                errors.push_back(fname + ": adds_near of=boss needs a 'boss' (rule or file level)");
+                return false;
+            }
+            q += "|boss=" + boss;
+        }
+        out = "json addsnear::" + q;
+        return true;
+    }
+    if (shape == "target_hp_ahead")
+    {
+        // others: a creature name ("feugen"), an entry id, or an array mixing
+        // both — the adds to compare the bot's current target against. Required.
+        std::string others;
+        auto appendToken = [&others](json const& el)
+        {
+            if (!others.empty())
+                others += ",";
+            others += el.is_number_integer() ? std::to_string(el.get<int>())
+                                              : el.get<std::string>();
+        };
+        if (t.contains("others"))
+        {
+            if (t["others"].is_array())
+                for (auto const& el : t["others"])
+                    appendToken(el);
+            else
+                appendToken(t["others"]);
+        }
+        if (others.empty())
+        {
+            errors.push_back(fname + ": target_hp_ahead needs 'others' (name/entry or array)");
+            return false;
+        }
+        char buf[32];
+        std::string q = "others=" + others;
+        std::snprintf(buf, sizeof(buf), "%.4f", t.value("margin", 0.0f));
+        q += std::string("|margin=") + buf;
+        std::snprintf(buf, sizeof(buf), "%.4f", t.value("below", 100.0f));
+        q += std::string("|below=") + buf;
+        out = "json hpahead::" + q;
         return true;
     }
 
@@ -230,17 +349,29 @@ void RaidJsonRuleSet::Load()
                         float radius = p.value("radius", 40.0f);
                         uint32 segments = p.value("segments", 16u);
                         bool clockwise = p.value("clockwise", true);
+                        // Optional: 0/absent = continuous orbit; >0 = step one
+                        // waypoint per `interval` ms (cadence-paced kite).
+                        uint32 interval = p.value("interval", 0u);
                         if (segments == 0)
                             segments = 16u;
-                        act.name = "json orbit::" + OrbitQualifier(x, y, radius, segments, clockwise);
+                        act.name = "json orbit::" + OrbitQualifier(x, y, radius, segments, clockwise, interval);
                     }
                     else if (shape == "stack_point")
                     {
                         float x = p.value("x", 0.0f);
                         float y = p.value("y", 0.0f);
                         float radius = p.value("radius", 5.0f);
-                        char buf[96];
-                        std::snprintf(buf, sizeof(buf), "%.4f,%.4f,%.4f", x, y, radius);
+                        bool hold = p.value("hold", false);
+                        char buf[128];
+                        // Optional z: an elevated anchor height (e.g. Thaddius's add
+                        // platforms) -> a 3D move so the bot climbs instead of
+                        // yielding on the floor below. Omitted = ground stack (the
+                        // 4-field qualifier stays byte-stable with existing files).
+                        if (p.contains("z"))
+                            std::snprintf(buf, sizeof(buf), "%.4f,%.4f,%.4f,%d,%.4f", x, y, radius,
+                                          hold ? 1 : 0, p.value("z", 0.0f));
+                        else
+                            std::snprintf(buf, sizeof(buf), "%.4f,%.4f,%.4f,%d", x, y, radius, hold ? 1 : 0);
                         act.name = std::string("json stack::") + buf;
                     }
                     else if (shape == "spread")
@@ -298,7 +429,73 @@ void RaidJsonRuleSet::Load()
                         }
                         std::string q = "targets=" + targets + "|boss=" + boss +
                                         "|detect=" + detect + "|select=" + select;
+                        // Optional candidate filters (omitted when 0 so existing
+                        // qualifiers stay byte-stable): only adds at/below a HP%
+                        // and/or within a range. "Burst the 5% Decimate chow in
+                        // range, else fall back to the boss" becomes pure data.
+                        float maxHp = p.value("max_hp_pct", 0.0f);
+                        float maxRange = p.value("max_range", 0.0f);
+                        char fbuf[48];
+                        if (maxHp > 0.0f)
+                        {
+                            std::snprintf(fbuf, sizeof(fbuf), "|maxhp=%.4f", maxHp);
+                            q += fbuf;
+                        }
+                        if (maxRange > 0.0f)
+                        {
+                            std::snprintf(fbuf, sizeof(fbuf), "|maxrange=%.4f", maxRange);
+                            q += fbuf;
+                        }
+                        // sticky: default true keeps the bot on its current match to
+                        // avoid caster nuke-cancel thrash; sticky:false re-picks the
+                        // best every tick (a tank swapping to the now-nearest add
+                        // after Magnetic Pull). Appended only when false (byte-stable).
+                        if (!p.value("sticky", true))
+                            q += "|sticky=0";
                         act.name = "json attackpick::" + q;
+                    }
+                    else if (shape == "snare_area")
+                    {
+                        // spells: ordered array of spell names; each bot fires the
+                        // first it knows + has off cooldown (self-gating, so one
+                        // rule serves every class).
+                        std::string spells;
+                        if (p.contains("spells") && p["spells"].is_array())
+                            for (auto const& el : p["spells"])
+                            {
+                                if (!spells.empty())
+                                    spells += ",";
+                                spells += el.get<std::string>();
+                            }
+                        if (spells.empty())
+                        {
+                            errors.push_back(fname + ": snare_area needs a non-empty params.spells array");
+                            continue;
+                        }
+                        std::string add;
+                        if (p.contains("add"))
+                            add = p["add"].is_number_integer() ? std::to_string(p["add"].get<int>())
+                                                               : p["add"].get<std::string>();
+                        if (add.empty())
+                        {
+                            errors.push_back(fname + ": snare_area needs params.add (the targeting / in-range gate)");
+                            continue;
+                        }
+                        std::string target = p.value("target", std::string("self"));
+                        if (target != "self" && target != "nearest" && target != "leak")
+                        {
+                            errors.push_back(fname + ": snare_area params.target must be 'self', 'nearest' or 'leak'");
+                            continue;
+                        }
+                        float range = p.value("range", 0.0f);
+                        char rbuf[32];
+                        std::snprintf(rbuf, sizeof(rbuf), "%.4f", range);
+                        std::string q = "spells=" + spells + "|add=" + add +
+                                        "|target=" + target + "|range=" + rbuf;
+                        std::string boss = p.value("boss", fileBoss);
+                        if (!boss.empty())
+                            q += "|boss=" + boss;
+                        act.name = "json snarearea::" + q;
                     }
                     else if (shape == "tank_adds")
                     {
@@ -313,6 +510,32 @@ void RaidJsonRuleSet::Load()
                         if (!boss.empty())
                             q += "|boss=" + boss;
                         act.name = "json tankadds::" + q;
+                    }
+                    else if (shape == "tank_swap")
+                    {
+                        std::string aura = p.value("aura", std::string());
+                        if (aura.empty())
+                        {
+                            errors.push_back(fname + ": tank_swap needs params.aura (the stacking debuff name)");
+                            continue;
+                        }
+                        uint32 stacks = p.value("stacks", 1u);
+                        std::string boss = p.value("boss", fileBoss);
+                        std::string detect = p.value("detect", std::string("threat"));
+                        if (detect != "threat" && detect != "nearest")
+                        {
+                            errors.push_back(fname + ": tank_swap params.detect must be 'threat' or 'nearest'");
+                            continue;
+                        }
+                        std::string watch = p.value("watch", std::string("victim"));
+                        if (watch != "victim" && watch != "maintank")
+                        {
+                            errors.push_back(fname + ": tank_swap params.watch must be 'victim' or 'maintank'");
+                            continue;
+                        }
+                        std::string q = "aura=" + aura + "|stacks=" + std::to_string(stacks) +
+                                        "|boss=" + boss + "|detect=" + detect + "|watch=" + watch;
+                        act.name = "json tankswap::" + q;
                     }
                     else if (shape == "timed_safe_zone")
                     {
@@ -360,6 +583,33 @@ void RaidJsonRuleSet::Load()
                         std::snprintf(tail, sizeof(tail), "|z=%.4f|first=%u|interval=%u|hold=%d|tol=%.4f|cw=%d",
                                       z, firstAt, interval, hold ? 1 : 0, tol, castWhileMoving ? 1 : 0);
                         act.name = "json safezone::zones=" + zones + "|pattern=" + pattern + tail;
+                    }
+                    else if (shape == "position_vs_boss")
+                    {
+                        std::string anchor = p.value("anchor", std::string("radial_out"));
+                        if (anchor != "radial_out" && anchor != "behind" && anchor != "front" &&
+                            anchor != "left" && anchor != "right")
+                        {
+                            errors.push_back(fname + ": position_vs_boss params.anchor must be "
+                                                     "radial_out|behind|front|left|right");
+                            continue;
+                        }
+                        float distance = p.value("distance", 0.0f);
+                        if (distance <= 0.0f)
+                        {
+                            errors.push_back(fname + ": position_vs_boss needs a positive params.distance");
+                            continue;
+                        }
+                        float angleOffset = p.value("angle_offset", 0.0f);
+                        bool onlyIfCloser = p.value("only_if_closer", false);
+                        std::string boss = p.value("boss", fileBoss);
+                        char buf[80];
+                        std::snprintf(buf, sizeof(buf), "|distance=%.4f|angle=%.4f|closer=%d",
+                                      distance, angleOffset, onlyIfCloser ? 1 : 0);
+                        std::string q = "anchor=" + anchor + buf;
+                        if (!boss.empty())
+                            q += "|boss=" + boss;
+                        act.name = "json posboss::" + q;
                     }
                     else
                     {

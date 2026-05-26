@@ -24,6 +24,7 @@
 #include "GameObjectData.h"
 #include "GameTime.h"
 #include "GuildMgr.h"
+#include "JsonStrategyLoader.h"
 #include "LFGMgr.h"
 #include "LastMovementValue.h"
 #include "LastSpellCastValue.h"
@@ -1601,6 +1602,26 @@ void PlayerbotAI::ApplyInstanceStrategies(uint32 mapId, bool tellMaster)
     {
         engines[BOT_STATE_COMBAT]->removeStrategy(strat);
         engines[BOT_STATE_NON_COMBAT]->removeStrategy(strat);
+    }
+
+    // json-raid EXCLUSIVITY (mod-solo-raid / json-raid subsystem). If this bot is
+    // toggled into json-raid mode (`.rjson on`), it OWNS the instance AI: never
+    // re-attach the C++ instance strategy on top of it. This function is re-run by
+    // the core on its own (worldport ACK, ResetStrategies), and without this guard
+    // it would silently re-add e.g. "naxx" alongside json-raid — leaving it
+    // ambiguous which strategy actually drives the fight (and the C++ actions can
+    // win yielded ticks). The C++ instance strategies were just stripped above; we
+    // re-assert json-raid (a ResetStrategies may have wiped it) and return without
+    // adding any C++ strategy. Cleared by `.rjson off`. See JsonStrategy/.
+    if (RaidJsonMode::instance().IsActive(bot->GetGUID()))
+    {
+        if (!HasStrategy("json-raid", BOT_STATE_COMBAT))
+            engines[BOT_STATE_COMBAT]->addStrategy("json-raid");
+        if (!HasStrategy("json-raid", BOT_STATE_NON_COMBAT))
+            engines[BOT_STATE_NON_COMBAT]->addStrategy("json-raid");
+        if (tellMaster)
+            TellMasterNoFacing("Instance AI: json-raid (data-driven); C++ instance strategy suppressed");
+        return;
     }
 
     std::string strategyName;

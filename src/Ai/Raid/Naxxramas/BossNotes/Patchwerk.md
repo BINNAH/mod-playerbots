@@ -57,7 +57,27 @@ Single phase — no transitions, no balcony, no adds, no immunity windows.
 No timers, no teleports, no adds to grab. The only coordination required is
 **off-tanks standing in melee** to keep Hateful Strike off the main tank.
 
-## No JSON strategy yet — existing C++ AI summary
+## JSON strategy — `patchwerk.json` (added 2026-05-26)
+
+A `json-raid` strategy now exists (`server/raid_strategies/patchwerk.json` +
+git copy under `mod-playerbots/data/raid_strategies/`). Two rules, both the
+generic `encounter_active` trigger + `attack` shape:
+
+- `role: tank` → `attack patchwerk` — all tanks glued to the boss in melee
+  (build threat + reach melee), so the two highest-HP/highest-threat bodies are
+  the only Hateful Strike-eligible targets. **This is the entire soak as data.**
+- `role: dps` → `attack patchwerk` — melee close in; ranged attack from class
+  cast range, naturally staying outside the 5y strike radius. Healers get no
+  rule (class heal strategy runs untouched).
+
+**Intentionally NOT ported** from the commented-out C++ below: `rear flank`
+(melee-behind) and the 12–15y `ranged position` hold. There is no Level-2 shape
+for "hold distance from boss", and `RearFlankAction` moves a bot to
+half-melee-range gated on **angle only** — wiring it to any group containing
+ranged would pull casters into the 5y kill zone. Neither is mechanically needed
+on Patchwerk (no cleave, no parry-haste), so both were dropped.
+
+## Existing (commented-out) C++ AI summary
 
 All Patchwerk-specific C++ code in `RaidNaxxActions_Patchwerk.cpp`,
 `RaidNaxxStrategy.cpp`, `RaidNaxxTriggers.cpp`, and `RaidNaxxTriggerContext.h`

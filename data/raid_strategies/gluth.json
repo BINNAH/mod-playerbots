@@ -1,0 +1,89 @@
+{
+  "name": "gluth",
+  "boss": "gluth",
+  "_comment": "FULLY LEVEL-2 Gluth, strategy (A2): dedicated mage/hunter KITERS orbit the chow spawn area and snare the chow; OFF-TANKS tank the gathered chow at the back (spawn area, away from Gluth NE); everyone else burns Gluth + bursts the decimated chow. See BossNotes/Gluth.md. TUNED FOR 25-MAN. Shapes used: attack max_hp_pct/max_range (burn pivot), encounter_active detect:nearest + class (gate threat-independent / class-specific roles), adds_near (off-tank 'kite when swarmed' switch), snare_area (kiter + off-tank casts), stack_point hold (off-tanks DON'T fall through to generic combat and rip Gluth -- the pull-aggro fix), tank_swap watch:maintank (Mortal Wound rotation). Layout: Gluth NE (3319,-3120); ranged/healers cluster (3300,-3140); spawn area / kite ring / OT hold all at (3280,-3160). Coords + spell lists are RELOAD-tunable. NOTE: ALL mages+hunters kite full-time (zero Gluth DPS from them); if that's too much DPS loss, trim the class list (e.g. \"hunter\" only) via reload. A/B with .rjson off.",
+  "rules": [
+    {
+      "_comment": "MAIN TANK holds Gluth at the NE anchor then attacks (stack@2 -> yields within 3y -> attack@1). Threat detect -- the MT threatens Gluth.",
+      "trigger": { "shape": "encounter_active", "role": "maintank" },
+      "actions": [
+        { "shape": "stack_point", "params": { "x": 3319.0, "y": -3120.0, "radius": 3.0 }, "priority": 2 },
+        { "shape": "attack", "params": { "targets": "gluth" }, "priority": 1 }
+      ]
+    },
+    {
+      "_comment": "KITERS (mages + hunters): orbit the chow spawn area (3280,-3160, r15) and snare whatever chow is nearest, slowing/rooting their march on Gluth so the off-tanks can gather them. class:\"mage,hunter\" + detect:nearest (they never threaten Gluth, so a threat gate would never fire for them, and the threat-based DPS/cluster rules below simply don't apply to them either). snare_area@7 fires the first known + off-CD snare on the nearest chow within 30y, then yields to orbit_point@6 which keeps them circling. Full-time -- they don't DPS Gluth. (If Frost Nova won't fire on an enemy target, switch its rule to target:self via reload.)",
+      "trigger": { "shape": "encounter_active", "role": "ranged", "class": "mage,hunter", "detect": "nearest" },
+      "actions": [
+        { "shape": "snare_area", "params": { "spells": ["Cone of Cold", "Frost Nova", "Concussive Shot", "Frost Trap", "Multi-Shot"], "add": "zombie chow", "target": "nearest", "range": 30.0 }, "priority": 7 },
+        { "shape": "orbit_point", "params": { "x": 3280.0, "y": -3160.0, "radius": 15.0, "segments": 12, "clockwise": true }, "priority": 6 }
+      ]
+    },
+    {
+      "_comment": "RANGED DPS + HEALERS cluster SW of the tank (away from the north door). stack_point yields within 8y so ranged fall through to attack Gluth and healers heal. (Mages/hunters match role 'ranged' but don't threaten Gluth, so this threat-detect rule never fires for them -- they kite.)",
+      "trigger": { "shape": "encounter_active", "role": "ranged,healer" },
+      "actions": [
+        { "shape": "stack_point", "params": { "x": 3300.0, "y": -3140.0, "radius": 8.0 }, "priority": 2 }
+      ]
+    },
+    {
+      "_comment": "ALL DPS tunnel Gluth (melee close via the un-suppressed 'reach melee'; non-kiter ranged nuke from the cluster).",
+      "trigger": { "shape": "encounter_active", "role": "dps" },
+      "actions": [
+        { "shape": "attack", "params": { "targets": "gluth" }, "priority": 1 }
+      ]
+    },
+    {
+      "_comment": "DECIMATE-BURN PIVOT, melee reach. max_hp_pct:10 only sees chow at/below 10% HP (only true right after Decimate), so it self-gates to the burn; boss:\"\" disables the fallback so outside the burn it yields and DPS stay on Gluth. role 'dps' excludes tanks/healers; max_range:10 keeps melee from chasing (chow come to Gluth).",
+      "trigger": { "shape": "encounter_active", "role": "dps" },
+      "actions": [
+        { "shape": "attack", "params": { "targets": "zombie chow", "boss": "", "detect": "nearest", "select": "nearest", "max_hp_pct": 10, "max_range": 10 }, "priority": 3 }
+      ]
+    },
+    {
+      "_comment": "DECIMATE-BURN PIVOT, ranged reach. role 'ranged' with max_range:35 catches decimated chow crossing the room. (Kiters don't fire this -- no Gluth threat -- they keep rooting the pack instead, which also helps the burn.)",
+      "trigger": { "shape": "encounter_active", "role": "ranged" },
+      "actions": [
+        { "shape": "attack", "params": { "targets": "zombie chow", "boss": "", "detect": "nearest", "select": "nearest", "max_hp_pct": 10, "max_range": 35 }, "priority": 3 }
+      ]
+    },
+    {
+      "_comment": "OFF-TANKS tank the gathered chow at the back (spawn area 3280,-3160). (a) tank_swap@5 -- Mortal Wound rotation: assist #0 covers Gluth while the MT's >=5 stacks decay. (b) snare_area@2 -- cast the first known tank AoE-threat spell on the nearest chow within 12y so chow stick to the OT (their AoE threat is what actually pulls chow off the march to Gluth). (c) stack_point hold:true @1 -- park at the hold and OWN the tick when there's nothing to do, so the OT does NOT fall through to generic combat and run at Gluth (the pull-aggro fix). detect:nearest because off-tanks never threaten Gluth.",
+      "trigger": { "shape": "encounter_active", "role": "offtank", "detect": "nearest" },
+      "actions": [
+        { "shape": "tank_swap", "params": { "aura": "mortal wound", "stacks": 5, "boss": "gluth", "detect": "nearest", "watch": "maintank" }, "priority": 5 },
+        { "shape": "snare_area", "params": { "spells": ["Consecration", "Hammer of the Righteous", "Avenger's Shield", "Holy Wrath", "Thunder Clap", "Shockwave", "Cleave", "Death and Decay", "Blood Boil", "Pestilence", "Swipe", "Maul", "Challenging Roar"], "add": "zombie chow", "target": "nearest", "range": 12.0 }, "priority": 2 },
+        { "shape": "stack_point", "params": { "x": 3280.0, "y": -3160.0, "radius": 5.0, "hold": true }, "priority": 1 }
+      ]
+    },
+    {
+      "_comment": "OFF-TANK KITES when swarmed: if >=6 chow pile within 9y, orbit the spawn ring (3280,-3160, r18) so it isn't bursted -- the C++ OT_KITE_THRESHOLD as data. orbit_point@3 beats the hold stack@1 and the snare@2 while active; tank_swap@5 still wins over it.",
+      "trigger": { "shape": "adds_near", "add": "zombie chow", "range": 9.0, "count": 6, "of": "self", "role": "offtank" },
+      "actions": [
+        { "shape": "orbit_point", "params": { "x": 3280.0, "y": -3160.0, "radius": 18.0, "segments": 16, "clockwise": true }, "priority": 3 }
+      ]
+    }
+  ],
+  "suppress": [
+    {
+      "_comment": "Everyone engaged: no formation-follow / master-follow during the fight (it would re-pull bots toward the master and fight the Level-2 positioning).",
+      "trigger": { "shape": "encounter_active" },
+      "actions": ["combat formation move", "follow"]
+    },
+    {
+      "_comment": "OFF-TANKS (threat-independent via detect:nearest): zero dps/tank assist, flee, formation, follow so they don't charge Gluth and rip aggro off the MT, and so their hold/orbit isn't dragged off. 'taunt spell' is NOT listed (tank_swap force-runs it anyway).",
+      "trigger": { "shape": "encounter_active", "role": "offtank", "detect": "nearest" },
+      "actions": ["dps assist", "tank assist", "flee", "combat formation move", "follow"]
+    },
+    {
+      "_comment": "KITERS (mages/hunters, threat-independent): same suppression so they don't assist the MT's target (Gluth), follow the master, or flee -- they just orbit the spawn area and snare. orbit_point owns the tick so they never fall through to attack Gluth.",
+      "trigger": { "shape": "encounter_active", "role": "ranged", "class": "mage,hunter", "detect": "nearest" },
+      "actions": ["dps assist", "tank assist", "flee", "combat formation move", "follow"]
+    },
+    {
+      "_comment": "MAIN TANK: zero its own 'taunt spell' so it doesn't re-taunt Gluth back during a Mortal Wound swap (the MT holds via attack threat; the only intended handoff is the swap). The off-tank's swap taunt is unaffected (different bot + force-run).",
+      "trigger": { "shape": "encounter_active", "role": "maintank" },
+      "actions": ["taunt spell"]
+    }
+  ]
+}
