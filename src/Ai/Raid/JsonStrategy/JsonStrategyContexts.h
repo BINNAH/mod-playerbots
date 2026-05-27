@@ -66,6 +66,7 @@ public:
         creators["json precast"] = &JsonStrategyTriggerContext::json_precast;
         creators["json addsnear"] = &JsonStrategyTriggerContext::json_addsnear;
         creators["json hpahead"] = &JsonStrategyTriggerContext::json_hpahead;
+        creators["json engage"] = &JsonStrategyTriggerContext::json_engage;
     }
 
 private:
@@ -73,6 +74,7 @@ private:
     static Trigger* json_precast(PlayerbotAI* ai) { return new JsonPreCastWindowTrigger(ai); }
     static Trigger* json_addsnear(PlayerbotAI* ai) { return new JsonAddsNearTrigger(ai); }
     static Trigger* json_hpahead(PlayerbotAI* ai) { return new JsonTargetHpAheadTrigger(ai); }
+    static Trigger* json_engage(PlayerbotAI* ai) { return new JsonManualEngageTrigger(ai); }
 };
 
 #endif

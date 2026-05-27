@@ -37,9 +37,17 @@ public:
     void Set(ObjectGuid bot, bool on);
     bool IsActive(ObjectGuid bot) const;
 
+    // Manual "call the pull" flag, set by `.rjson pull` and cleared by `.rjson
+    // stop`/`off`. Read by the `manual_engage` trigger so tanks pre-position and
+    // pull their assigned add ON COMMAND, instead of waiting for something to
+    // wander into combat. In-memory, per bot (set for all of an owner's bots).
+    void SetEngaged(ObjectGuid bot, bool on);
+    bool IsEngaged(ObjectGuid bot) const;
+
 private:
     RaidJsonMode() = default;
     std::set<ObjectGuid> _bots;
+    std::set<ObjectGuid> _engaged;
 };
 
 // One action under a trigger. `name` is the fully-resolved factory name

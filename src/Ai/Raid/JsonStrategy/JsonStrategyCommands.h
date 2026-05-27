@@ -8,6 +8,10 @@
  *   .rjson off      remove "json-raid" and restore the proper C++ strategy.
  *   .rjson status   show source dir, file/rule/error counts, and how many of
  *                   your bots are running json-raid.
+ *   .rjson pull     "call the pull": flag your bots engaged so the manual_engage
+ *                   rules fire (tanks run in + pull their assigned add) without
+ *                   waiting for combat. Announces in party/raid.
+ *   .rjson stop     clear the engage flag (re-arm before the next pull / abort).
  */
 #ifndef _PLAYERBOT_JSONSTRATEGYCOMMANDS_H
 #define _PLAYERBOT_JSONSTRATEGYCOMMANDS_H
@@ -26,6 +30,8 @@ public:
     static bool HandleOnCommand(ChatHandler* handler);
     static bool HandleOffCommand(ChatHandler* handler);
     static bool HandleStatusCommand(ChatHandler* handler);
+    static bool HandlePullCommand(ChatHandler* handler);
+    static bool HandleStopCommand(ChatHandler* handler);
 };
 
 void AddRaidJsonStrategyCommandScripts();

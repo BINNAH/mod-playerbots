@@ -490,38 +490,49 @@ bool JsonTankSwapAction::Execute(Event /*event*/)
     if (!boss)
         return false;
 
-    // Whose stacks gate the swap: the boss's current victim (symmetric ping-pong)
-    // or the designated main tank (one relief tank covers while the MT detoxes).
-    Unit* watched = nullptr;
-    if (_watchMainTank)
+    Unit* victim = boss->GetVictim();
+
+    // I'm the ACTIVE tank (the boss is on me): hold it and go ham. Re-acquire the
+    // boss if I drifted off it, otherwise YIELD so my own rotation pounds it
+    // (nothing else is wired for the dedicated swap tank, so the tick falls through
+    // to its normal combat = full threat/DPS on the boss).
+    if (victim == bot)
     {
-        // Only the primary relief tank (assist #0) covers in maintank mode, so
-        // several off-tanks don't all pile onto the boss during the swap window
-        // (the others keep their normal job, e.g. holding adds). Same designated
-        // taunter the C++ Gluth swap used.
-        if (!botAI->IsAssistTankOfIndex(bot, 0))
-            return false;
-        watched = AI_VALUE(Unit*, "main tank");
+        if (bot->GetVictim() != boss)
+            return Attack(boss);
+        return false;
     }
-    else
+
+    // I'm an OFF tank. Whose load triggers my taunt?
+    //   watch=victim (default): the boss's current victim -> symmetric ping-pong,
+    //     each tank takes over when the other hits the cap (standard 2-tank swap).
+    //   watch=maintank: the designated main tank, and only the PRIMARY relief tank
+    //     (assist #0) acts, so several off-tanks don't all pile on (one covers
+    //     while the MT detoxes).
+    bool eligible = _watchMainTank ? botAI->IsAssistTankOfIndex(bot, 0) : true;
+    Unit* watched = _watchMainTank ? AI_VALUE(Unit*, "main tank") : victim;
+
+    // checkStack (5th arg) returns the aura only at >= _stacks stacks, so the null
+    // check is the "watched tank is loaded?" gate.
+    if (eligible && watched && watched != bot &&
+        botAI->GetAura(_aura, watched, false, false, (int)_stacks))
     {
-        watched = boss->GetVictim();
+        // Take over: get on the boss, then FORCE the class taunt. DoSpecificAction
+        // bypasses relevance, so a suppressed auto-taunt elsewhere can't block it.
+        if (bot->GetVictim() != boss)
+            return Attack(boss);
+        return botAI->DoSpecificAction("taunt spell", Event(), true);
     }
-    if (!watched || watched == bot)
-        return false;  // nobody loaded to relieve, or I'm already the active tank
 
-    // checkStack (5th arg) returns the aura only when it's at >= _stacks stacks,
-    // so a plain null check is the "loaded?" gate (no Aura definition needed here).
-    if (!botAI->GetAura(_aura, watched, false, false, (int)_stacks))
-        return false;  // the watched tank isn't loaded yet
-
-    // Take and hold the boss: get on it first, then force the class taunt. Holding
-    // (Attack) between taunts keeps the relieving tank glued to the boss until the
-    // gate clears, instead of sliding back to its other job.
-    if (bot->GetVictim() != boss)
-        return Attack(boss);
-
-    return botAI->DoSpecificAction("taunt spell", Event(), true);
+    // Not my turn. The MAIN tank YIELDS so its own attack/stack rules keep it
+    // tanking the boss (and holding threat to take back) — it must engage on the
+    // pull, not stand idle. A dedicated swap OFF tank STANDS READY (owns the tick)
+    // so it doesn't fall through to generic combat and hit the boss before the swap
+    // is due. A non-eligible off tank (maintank-mode, not the relief tank) yields so
+    // its other rules (e.g. holding adds) run instead.
+    if (botAI->IsMainTank(bot))
+        return false;
+    return eligible;
 }
 
 // ---------------------------------------------------------------------------

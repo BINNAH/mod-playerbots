@@ -37,6 +37,19 @@ bool RaidJsonMode::IsActive(ObjectGuid bot) const
     return _bots.find(bot) != _bots.end();
 }
 
+void RaidJsonMode::SetEngaged(ObjectGuid bot, bool on)
+{
+    if (on)
+        _engaged.insert(bot);
+    else
+        _engaged.erase(bot);
+}
+
+bool RaidJsonMode::IsEngaged(ObjectGuid bot) const
+{
+    return _engaged.find(bot) != _engaged.end();
+}
+
 std::string RaidJsonRuleSet::ResolveDir() const
 {
     // Resolved relative to the worldserver working directory (the `server/`
@@ -236,6 +249,30 @@ static bool ResolveTrigger(json const& t, std::string const& fileBoss,
         std::snprintf(buf, sizeof(buf), "%.4f", t.value("below", 100.0f));
         q += std::string("|below=") + buf;
         out = "json hpahead::" + q;
+        return true;
+    }
+    if (shape == "manual_engage")
+    {
+        // Both optional: `add` (name/entry) gates on that add being alive nearby
+        // so the rule stops once it dies; `role` assigns MT vs OT to their adds.
+        std::string q;
+        std::string add;
+        if (t.contains("add"))
+            add = t["add"].is_number_integer() ? std::to_string(t["add"].get<int>())
+                                               : t["add"].get<std::string>();
+        if (!add.empty())
+            q += "add=" + add;
+        std::string role = t.value("role", std::string());
+        if (!role.empty())
+            q += (q.empty() ? "" : "|") + std::string("role=") + role;
+        float range = t.value("range", 0.0f);
+        if (range > 0.0f)
+        {
+            char rbuf[48];
+            std::snprintf(rbuf, sizeof(rbuf), "%srange=%.4f", q.empty() ? "" : "|", range);
+            q += rbuf;
+        }
+        out = "json engage::" + q;
         return true;
     }
 

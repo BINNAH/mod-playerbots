@@ -1,5 +1,6 @@
 #include "JsonStrategyCommands.h"
 
+#include "Group.h"
 #include "JsonStrategyLoader.h"
 #include "Playerbots.h"
 
@@ -49,6 +50,38 @@ static uint32 ForEachOwnedBot(Player* master, std::function<void(PlayerbotAI*, P
     return count;
 }
 
+// Announce a line in the master's party/raid chat, spoken by one of their bots
+// (so it reads like a guildie calling it out, not a system message). No-op if
+// the master isn't grouped — falls back to nothing (the SysMessage still shows).
+static void AnnounceToGroup(Player* master, std::string const& msg)
+{
+    if (!master)
+        return;
+    Group* group = master->GetGroup();
+    if (!group)
+        return;
+
+    // Prefer one of the owner's bots as the speaker; fall back to the master.
+    Player* speaker = master;
+    if (PlayerbotMgr* mgr = GET_PLAYERBOT_MGR(master))
+    {
+        for (auto it = mgr->GetPlayerBotsBegin(); it != mgr->GetPlayerBotsEnd(); ++it)
+        {
+            if (Player* bot = it->second)
+            {
+                speaker = bot;
+                break;
+            }
+        }
+    }
+
+    WorldPacket data;
+    ChatMsg type = group->isRaidGroup() ? CHAT_MSG_RAID : CHAT_MSG_PARTY;
+    ChatHandler::BuildChatPacket(data, type, msg, LANG_UNIVERSAL, CHAT_TAG_NONE, speaker->GetGUID(),
+                                 speaker->GetName());
+    group->BroadcastPacket(&data, false);
+}
+
 ChatCommandTable RaidJsonCommandScript::GetCommands() const
 {
     static ChatCommandTable rjsonTable =
@@ -57,6 +90,8 @@ ChatCommandTable RaidJsonCommandScript::GetCommands() const
         { "on",     HandleOnCommand,     SEC_GAMEMASTER, Console::No  },
         { "off",    HandleOffCommand,    SEC_GAMEMASTER, Console::No  },
         { "status", HandleStatusCommand, SEC_GAMEMASTER, Console::Yes },
+        { "pull",   HandlePullCommand,   SEC_GAMEMASTER, Console::No  },
+        { "stop",   HandleStopCommand,   SEC_GAMEMASTER, Console::No  },
     };
 
     static ChatCommandTable table =
@@ -134,6 +169,8 @@ bool RaidJsonCommandScript::HandleOnCommand(ChatHandler* handler)
                                         count, rs.RuleCount()));
     if (rs.RuleCount() == 0)
         handler->SendSysMessage("RaidJson: WARNING — 0 rules loaded. Check `.rjson status`.");
+    else
+        AnnounceToGroup(master, "Ready when you are — type .rjson pull to send the tanks in!");
     return true;
 }
 
@@ -149,8 +186,10 @@ bool RaidJsonCommandScript::HandleOffCommand(ChatHandler* handler)
     uint32 count = ForEachOwnedBot(master, [](PlayerbotAI* ai, Player* bot)
     {
         // Clear the exclusivity flag FIRST so ApplyInstanceStrategies below is
-        // allowed to re-attach the proper C++ instance strategy.
+        // allowed to re-attach the proper C++ instance strategy. Also clear the
+        // manual engage flag so a stale "pull" doesn't linger across the swap.
         RaidJsonMode::instance().Set(bot->GetGUID(), false);
+        RaidJsonMode::instance().SetEngaged(bot->GetGUID(), false);
         if (ai->HasStrategy("json-raid", BOT_STATE_COMBAT))
             ai->ChangeStrategy("-json-raid", BOT_STATE_COMBAT);
         if (ai->HasStrategy("json-raid", BOT_STATE_NON_COMBAT))
@@ -198,6 +237,48 @@ bool RaidJsonCommandScript::HandleStatusCommand(ChatHandler* handler)
         else if (active > 0)
             handler->SendSysMessage("  exclusivity OK: no C++ instance strategy on json-raid bots.");
     }
+    return true;
+}
+
+bool RaidJsonCommandScript::HandlePullCommand(ChatHandler* handler)
+{
+    Player* master = MasterFromHandler(handler);
+    if (!master)
+    {
+        handler->SendSysMessage("RaidJson: this command must be used in-game.");
+        return true;
+    }
+
+    // Flag every owned bot engaged. The manual_engage rules then fire (until the
+    // bot enters combat): tanks run up to their assigned adds and pull. The flag
+    // stays set so it survives the brief pre-combat window; combat itself gates
+    // the rules off, and `.rjson stop`/`off` clears it.
+    uint32 count = ForEachOwnedBot(master, [](PlayerbotAI* /*ai*/, Player* bot)
+    {
+        RaidJsonMode::instance().SetEngaged(bot->GetGUID(), true);
+    });
+
+    AnnounceToGroup(master, "Pulling! Tanks in on your adds — go go go!");
+    handler->SendSysMessage(fmt::format("RaidJson: PULL called — {} bot(s) engaged. (.rjson stop to re-arm / abort)", count));
+    return true;
+}
+
+bool RaidJsonCommandScript::HandleStopCommand(ChatHandler* handler)
+{
+    Player* master = MasterFromHandler(handler);
+    if (!master)
+    {
+        handler->SendSysMessage("RaidJson: this command must be used in-game.");
+        return true;
+    }
+
+    uint32 count = ForEachOwnedBot(master, [](PlayerbotAI* /*ai*/, Player* bot)
+    {
+        RaidJsonMode::instance().SetEngaged(bot->GetGUID(), false);
+    });
+
+    AnnounceToGroup(master, "Hold — reset, waiting on the call.");
+    handler->SendSysMessage(fmt::format("RaidJson: engage flag cleared for {} bot(s).", count));
     return true;
 }
 

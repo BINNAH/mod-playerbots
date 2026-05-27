@@ -1,5 +1,6 @@
 #include "JsonStrategyTriggers.h"
 
+#include "JsonStrategyLoader.h"  // RaidJsonMode (manual_engage flag)
 #include "JsonStrategyShapeUtil.h"
 #include "Playerbots.h"
 
@@ -47,6 +48,12 @@ static bool RoleMatches(PlayerbotAI* botAI, Player* bot, std::string const& role
         else if (role == "maintank" && botAI->IsMainTank(bot))
             return true;
         else if (role == "offtank" && botAI->IsAssistTank(bot))
+            return true;
+        else if (role == "offtank1" && botAI->IsAssistTankOfIndex(bot, 0))
+            return true;
+        else if (role == "offtank2" && botAI->IsAssistTankOfIndex(bot, 1))
+            return true;
+        else if (role == "offtank3" && botAI->IsAssistTankOfIndex(bot, 2))
             return true;
         else if (role == "tank" && botAI->IsTank(bot))
             return true;
@@ -270,6 +277,41 @@ bool JsonTargetHpAheadTrigger::IsActive()
             return true;
     }
     return false;
+}
+
+// ---------------------------------------------------------------------------
+// manual_engage
+// ---------------------------------------------------------------------------
+bool JsonManualEngageTrigger::IsActive()
+{
+    // Only while the raid leader has called the pull (`.rjson pull`).
+    if (!RaidJsonMode::instance().IsEngaged(bot->GetGUID()))
+        return false;
+
+    if (!RoleMatches(botAI, bot, JsonKv(qualifier, "role")))
+        return false;
+
+    // Optional add gate: only while the assigned add is alive AND (if `range` is
+    // set) within `range` yards. The proximity gate is the pathing fix: while the
+    // bot is FAR from its add it stays out of this rule, so it just FOLLOWS the
+    // master up the ramp (the navmesh can't path the long low->high climb on its
+    // own — it straight-lines through the slime — but follow rides the leader's
+    // route). It only breaks off to engage once you've led it close. It also
+    // auto-hands-off on Magnetic Pull: yanked away from its add, the bot drops
+    // out of range here and the in-combat nearest-pet rule retargets it to the
+    // add it was pulled onto. Detection is a proximity scan (threat-independent).
+    std::string add = JsonKv(qualifier, "add");
+    if (!add.empty())
+    {
+        Unit* a = FindNearbyNamed(botAI, AI_VALUE(GuidVector, "nearest npcs"), add);
+        if (!a)
+            return false;
+        float range = (float)std::atof(JsonKv(qualifier, "range", "0").c_str());
+        if (range > 0.0f && bot->GetExactDist2d(a) > range)
+            return false;
+    }
+
+    return true;
 }
 
 // ---------------------------------------------------------------------------

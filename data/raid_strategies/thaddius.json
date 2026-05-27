@@ -1,55 +1,46 @@
 {
   "name": "thaddius",
   "boss": "thaddius",
+  "_comment": "WORKFLOW: `.rjson on` to arm, then walk your raid UP the ramps and past both platforms (the bots FOLLOW you up — that's the only reliable way up; they can't path the long low->high climb on their own). Then `.rjson pull`: each bot that you've led within range of an add breaks off and engages it — MAIN TANK on Stalagg, OFF-TANK on Feugen, everyone else on the nearest add. The instant combat starts the PROVEN C++ actions take over (ThaddiusAttackNearestPetAction for on-platform positioning + Magnetic Pull swaps; ThaddiusMoveToPlatformAction for the z312->z304 transition jump). Polarity is Level-2; add death-sync is the generic target_hp_ahead + @damage suppress.",
   "rules": [
     {
-      "_comment": "ADD PHASE baseline (all roles, while Stalagg is alive; detect:nearest is threat-independent so it drives the approach/split from range). Attack the nearest add. sticky:false so a tank yanked to the other add by Magnetic Pull swaps to the now-nearest add instead of running back to its original target.",
-      "trigger": { "shape": "encounter_active", "boss": "stalagg", "detect": "nearest" },
-      "actions": [
-        { "shape": "attack", "params": { "targets": ["feugen", "stalagg"], "detect": "nearest", "select": "nearest", "sticky": false }, "priority": 1 }
-      ]
+      "_comment": "PULL (on `.rjson pull`): MAIN TANK engages Stalagg once you've led it within 25y (so it follows you up the ramp first, then breaks off). Proximity gate also re-hands-off on Magnetic Pull: yanked to Feugen, it drops out of range here and the C++ nearest-pet rule retargets it.",
+      "trigger": { "shape": "manual_engage", "add": "stalagg", "role": "maintank", "range": 25.0 },
+      "actions": [ { "shape": "attack", "params": { "targets": "stalagg", "detect": "nearest" }, "priority": 1 } ]
     },
     {
-      "_comment": "ADD PHASE baseline, while Feugen is alive (covers the window where Stalagg died first).",
-      "trigger": { "shape": "encounter_active", "boss": "feugen", "detect": "nearest" },
-      "actions": [
-        { "shape": "attack", "params": { "targets": ["feugen", "stalagg"], "detect": "nearest", "select": "nearest", "sticky": false }, "priority": 1 }
-      ]
-    },
-
-    {
-      "_comment": "ADD PHASE positioning -- TANK on the Stalagg platform. adds_near (proximity, range 55 < half the ~120y platform gap) means this fires only for the tank actually next to Stalagg, and it FOLLOWS a Magnetic Pull (after the pull the tank is next to the other add, so the other platform's rule takes over). stack_point with z=312.61 forces the climb ONTO the platform (3D move) so the tank holds the add up there -- if the add comes off its platform the raid gets nuked. taunt re-grabs aggro after the pull.",
-      "trigger": { "shape": "adds_near", "add": "stalagg", "range": 55.0, "of": "self", "role": "tank" },
-      "actions": [
-        { "shape": "stack_point", "params": { "x": 3436.14, "y": -2919.98, "z": 312.61, "radius": 3.0 }, "priority": 3 },
-        { "name": "taunt spell", "priority": 2 }
-      ]
+      "_comment": "PULL: OFF-TANK engages Feugen once led within 25y.",
+      "trigger": { "shape": "manual_engage", "add": "feugen", "role": "offtank", "range": 25.0 },
+      "actions": [ { "shape": "attack", "params": { "targets": "feugen", "detect": "nearest" }, "priority": 1 } ]
     },
     {
-      "_comment": "ADD PHASE positioning -- TANK on the Feugen platform.",
-      "trigger": { "shape": "adds_near", "add": "feugen", "range": 55.0, "of": "self", "role": "tank" },
-      "actions": [
-        { "shape": "stack_point", "params": { "x": 3522.94, "y": -3002.60, "z": 312.61, "radius": 3.0 }, "priority": 3 },
-        { "name": "taunt spell", "priority": 2 }
-      ]
+      "_comment": "PULL: NON-TANKS (dps/healers) engage the nearest add once you've led them within 30y of either one. Two rules so it fires near either platform. The in-combat C++ then positions them to the ranged anchors.",
+      "trigger": { "shape": "manual_engage", "add": "stalagg", "role": "nontank", "range": 30.0 },
+      "actions": [ { "shape": "attack", "params": { "targets": ["feugen", "stalagg"], "detect": "nearest", "select": "nearest" }, "priority": 1 } ]
     },
     {
-      "_comment": "ADD PHASE positioning -- NON-TANKS on the Stalagg platform climb up to the ranged anchor (z=312.61) so melee can reach the add and ranged stay inside the Tesla Coil leash. They commit to their side (no pull), then DPS via the baseline rule once parked.",
-      "trigger": { "shape": "adds_near", "add": "stalagg", "range": 55.0, "of": "self", "role": "nontank" },
-      "actions": [
-        { "shape": "stack_point", "params": { "x": 3441.01, "y": -2942.04, "z": 312.61, "radius": 5.0 }, "priority": 3 }
-      ]
-    },
-    {
-      "_comment": "ADD PHASE positioning -- NON-TANKS on the Feugen platform.",
-      "trigger": { "shape": "adds_near", "add": "feugen", "range": 55.0, "of": "self", "role": "nontank" },
-      "actions": [
-        { "shape": "stack_point", "params": { "x": 3500.45, "y": -2997.92, "z": 312.61, "radius": 5.0 }, "priority": 3 }
-      ]
+      "trigger": { "shape": "manual_engage", "add": "feugen", "role": "nontank", "range": 30.0 },
+      "actions": [ { "shape": "attack", "params": { "targets": ["feugen", "stalagg"], "detect": "nearest", "select": "nearest" }, "priority": 1 } ]
     },
 
     {
-      "_comment": "THADDIUS PHASE -- polarity grouping. Negative charge -> LEFT spots, Positive -> RIGHT, melee vs ranged offset. 1:1 port of ThaddiusMovePolarityAction's 6 fixed anchors. detect:nearest so a freshly-descended bot positions before it builds threat. stack_point yields once parked, so the boss-DPS rule below fires while clustered.",
+      "_comment": "ADD PHASE (Level-1, combat-gated). Splits by nearest add + holds tanks/ranged at their on-platform anchors; handles Magnetic Pull tank swaps.",
+      "trigger": { "name": "thaddius phase pet" },
+      "actions": [ { "name": "thaddius attack nearest pet", "priority": 1 } ]
+    },
+    {
+      "_comment": "ADD PHASE re-aggro: taunt when a tank loses its add (Magnetic Pull).",
+      "trigger": { "name": "thaddius phase pet lose aggro" },
+      "actions": [ { "name": "taunt spell", "priority": 2 } ]
+    },
+    {
+      "_comment": "TRANSITION (Level-1): both adds dead -> jump down from the add platforms (z312) to the low platform (z304). Pure C++ JumpTo geometry.",
+      "trigger": { "name": "thaddius phase transition" },
+      "actions": [ { "name": "thaddius move to platform", "priority": 1 } ]
+    },
+
+    {
+      "_comment": "THADDIUS PHASE -- polarity grouping (Level-2). Negative charge -> LEFT spots, Positive -> RIGHT, melee vs ranged offset. 1:1 port of ThaddiusMovePolarityAction's 6 anchors. self_aura gate means these only fire once Polarity Shift has marked the bot. stack_point yields once parked, so generic combat DPSes the boss.",
       "trigger": { "shape": "encounter_active", "boss": "thaddius", "detect": "nearest", "role": "melee", "self_aura": "negative charge", "self_aura_present": true },
       "actions": [ { "shape": "stack_point", "params": { "x": 3508.29, "y": -2920.12, "radius": 3.0 }, "priority": 3 } ]
     },
@@ -64,31 +55,22 @@
     {
       "trigger": { "shape": "encounter_active", "boss": "thaddius", "detect": "nearest", "role": "ranged,healer", "self_aura": "positive charge", "self_aura_present": true },
       "actions": [ { "shape": "stack_point", "params": { "x": 3524.32, "y": -2936.26, "radius": 3.0 }, "priority": 3 } ]
-    },
-
-    {
-      "_comment": "THADDIUS PHASE -- DPS the boss whenever not repositioning for polarity. Default threat detection, so this never fires on the non-attackable Thaddius during the add phase.",
-      "trigger": { "shape": "encounter_active", "boss": "thaddius", "role": "all" },
-      "actions": [ { "shape": "attack", "params": { "targets": "thaddius" }, "priority": 1 } ]
     }
   ],
 
   "suppress": [
     {
-      "_comment": "No formation-follow / master-follow during the fight: the stock movers re-pull bots toward the master every tick and fight the Level-2 positioning (the platform climb and the polarity stack). One entry per phase actor so it covers the add phase (Feugen/Stalagg) and the Thaddius phase. Mirrors Grobbulus/Gluth. NOTE: 'reach melee' is intentionally NOT suppressed (melee need it to close on the add/boss once on the platform); add it to the Thaddius-phase entry if melee dance off the polarity anchor in testing.",
-      "trigger": { "shape": "encounter_active", "boss": "thaddius", "detect": "nearest" },
+      "_comment": "ADD PHASE: no formation-follow / generic target-assist while the C++ pet action owns positioning + targeting. Combat-gated, so it does NOT suppress follow before/while approaching the pull (bots need follow to ride you up the ramp). Mirrors ThaddiusGenericMultiplier's pet-phase clamp.",
+      "trigger": { "name": "thaddius phase pet" },
+      "actions": ["combat formation move", "follow", "dps assist", "tank assist"]
+    },
+    {
+      "_comment": "THADDIUS PHASE: stop formation/master-follow from fighting the polarity stack. dps/tank assist NOT suppressed, so bots DPS the boss between polarity moves.",
+      "trigger": { "name": "thaddius phase thaddius" },
       "actions": ["combat formation move", "follow"]
     },
     {
-      "trigger": { "shape": "encounter_active", "boss": "feugen", "detect": "nearest" },
-      "actions": ["combat formation move", "follow"]
-    },
-    {
-      "trigger": { "shape": "encounter_active", "boss": "stalagg", "detect": "nearest" },
-      "actions": ["combat formation move", "follow"]
-    },
-    {
-      "_comment": "DEATH-SYNC throttle: zero a bot's non-healing damage casts while its current add is <=40% HP and the other add is >=3% higher, so the two adds finish within the ~5s revive window. Self-deactivates in the Thaddius phase (adds dead -> current target is Thaddius -> trigger false). Data form of ThaddiusGenericMultiplier's <=40%/>=3% DPS clamp.",
+      "_comment": "DEATH-SYNC throttle: zero a bot's non-healing damage casts while its current add is <=40% HP and the other add is >=3% higher, so the two adds finish within the ~5s revive window. Self-deactivates once the adds are dead. Data form of ThaddiusGenericMultiplier's <=40%/>=3% clamp.",
       "trigger": { "shape": "target_hp_ahead", "others": ["feugen", "stalagg"], "margin": 3, "below": 40 },
       "actions": ["@damage"]
     }

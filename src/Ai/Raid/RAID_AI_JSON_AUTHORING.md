@@ -38,8 +38,10 @@ See also: `RAID_AI_PATTERNS.md` (shape vocabulary) and `RAID_AI_INVENTORY.md`
 |------------------|------------------------------------------------------------------------------|
 | `.rjson status`  | Source dir, file/rule/error counts, how many of your bots run it.            |
 | `.rjson reload`  | Re-read every JSON file, rebuild the rule set, re-init your json-raid bots.   |
-| `.rjson on`      | For your bots: strip their C++ instance strategy, add `json-raid` (A/B swap). |
-| `.rjson off`     | For your bots: remove `json-raid`, restore the proper C++ instance strategy.  |
+| `.rjson on`      | For your bots: strip their C++ instance strategy, add `json-raid` (A/B swap). Announces "type `.rjson pull` …" in party/raid. |
+| `.rjson off`     | For your bots: remove `json-raid`, restore the proper C++ instance strategy. Also clears the engage flag.  |
+| `.rjson pull`    | **"Call the pull."** Flags your bots engaged so the `manual_engage` rules fire (tanks run in + pull their assigned add) without waiting for combat. Announces in party/raid. |
+| `.rjson stop`    | Clear the engage flag — re-arm before the next pull, or abort one. |
 
 Tuning loop: `.rjson on` → pull → edit JSON → `.rjson reload` → re-pull. No build.
 
@@ -92,8 +94,11 @@ role and phase. **Evaluated per bot**, so one rule fans out correctly.
 { "shape": "encounter_active", "role": "ranged,healer", "self_aura": "mutating injection", "self_aura_present": true }
 ```
 
-**Role tokens:** `all`, `maintank`, `offtank`, `tank`, `notmaintank`, `nontank`,
-`ranged`, `melee`, `healer`, `dps`. Combine with commas, e.g. `"ranged,healer"`.
+**Role tokens:** `all`, `maintank`, `offtank`, `offtank1`, `offtank2`, `offtank3`,
+`tank`, `notmaintank`, `nontank`, `ranged`, `melee`, `healer`, `dps`. Combine with
+commas, e.g. `"ranged,healer"`. `offtank1/2/3` are the 1st/2nd/3rd **assist tanks**
+(by index) — use them to give one off-tank a different job than the others (e.g.
+`offtank1` does a tank swap on the boss while `offtank2,offtank3` tank adds).
 
 ### Trigger shape `pre_cast_window` (→ `JsonPreCastWindowTrigger`)
 Fires in the short window *before* a boss's **periodic** cast, so externals /
@@ -179,6 +184,32 @@ Evaluated per bot (it reads *that* bot's target), so the bots on the **ahead**
 { "shape": "target_hp_ahead", "others": ["feugen", "stalagg"], "margin": 3, "below": 40 }
 ```
 
+### Trigger shape `manual_engage` (→ `JsonManualEngageTrigger`)
+The **"call the pull"** gate. Fires while the bot's owner has issued **`.rjson pull`**
+(an in-memory engage flag), `role` matches, and (if `add` is set) that add is alive
+within `range`. Lets the raid leader kick off the engage *on command* — e.g. main
+tank on one add, off-tank on the other — instead of waiting for combat. `.rjson stop`
+(or `.rjson off`) clears the flag.
+
+**`range` is the pathing trick.** Bots **can't path the long low→high climb onto a
+platform on their own** (the navmesh straight-lines them through the hazard below).
+So gate the engage on proximity: while a bot is *far* from its `add` the rule is
+silent and the bot just **follows you up the ramp** (riding your route); it only
+breaks off to engage once you've led it within `range`. The same gate **auto-hands-off
+on a knockback/pull** — yanked out of `range`, the bot falls through to the in-combat
+rules (e.g. the Level-1 nearest-pet positioning), which retarget it.
+
+| Field   | Type        | Default | Meaning                                                                 |
+|---------|-------------|---------|-------------------------------------------------------------------------|
+| `add`   | string\|int | (none)  | Only fire while this add is **alive** (proximity scan, threat-independent). The per-add assignment key; also stops the rule once the add dies. |
+| `range` | float       | `0`     | With `add`: only fire within this many yards of it (`0` = any distance in sight). Set it so bots follow you up first and break off near their add. |
+| `role`  | string      | (all)   | Role filter (same tokens as `encounter_active`) — give MT vs OT different adds. |
+
+```json
+{ "trigger": { "shape": "manual_engage", "add": "stalagg", "role": "maintank", "range": 25.0 },
+  "actions": [ { "shape": "attack", "params": { "targets": "stalagg", "detect": "nearest" }, "priority": 1 } ] }
+```
+
 ### Action shapes
 
 | Shape             | Class                       | `params`                                  | Behavior |
@@ -188,7 +219,7 @@ Evaluated per bot (it reads *that* bot's target), so the bots on the **ahead**
 | `spread`          | `JsonSpreadAction`          | `radius`, `min_interval` (ms, default 3000) | Move away from the nearest **other ranged/healer** within `radius`. Ignores the melee/tank stack and repositions at most once per `min_interval` so casters aren't interrupted. Yields when clear. |
 | `attack`          | `JsonAttackAction`          | `targets` (name/entry, string or array), `boss` (fallback, default file `boss`), `detect` (`threat`\|`nearest`), `select` (`lowest_hp`\|`nearest`), `sticky` (bool, default true), `max_hp_pct`, `max_range` | Pick one creature to attack — the lowest-HP / nearest match from `targets`, falling back to `boss` when none are alive. **`detect`** = `threat` scans the attacker/threat list (default); `nearest` scans nearby NPCs so **off-threat** objects are visible (Web Wrap cocoons, un-aggroed adds). **`select`** = `lowest_hp` (default when `detect:threat`) is "kill adds first"; `nearest` (default when `detect:nearest`) is closest-first. **`max_hp_pct`** / **`max_range`** (both default `0` = off) filter the candidate set to adds at/below that HP% and/or within that many yards — so `{targets:"zombie chow", max_hp_pct:10, max_range:35}` self-gates to the Decimate burn (chow are only candidates while at 5%, else it falls back to `boss`), no separate phase trigger needed. **`sticky`** (default `true`) keeps the bot on its current match until it dies — no cast-cancel thrash when two candidates' "best" flips tick-to-tick. **`sticky:false`** re-picks the best every tick: use it with `select:nearest` so a tank yanked to the other add by **Magnetic Pull** swaps to the now-nearest add instead of running back to its original target (Thaddius). Matches by name **or** entry id; yields when already on target. To just focus one creature (e.g. the boss), name it in `targets`. Merges the former `attack_target`, `attack_priority` (`threat`+`lowest_hp`) and `attack_nearest` (`nearest`+`nearest`). |
 | `tank_adds`       | `JsonTankAddsAction`        | `add`, `boss` (default file `boss`)       | Off-tank (assist-tank #0) gathers every living add named `add` and drags it onto the main tank / boss. attack → taunt → reposition. |
-| `tank_swap`       | `JsonTankSwapAction`        | `aura` (debuff name), `stacks` (default 1), `boss` (default file `boss`), `detect` (`threat`\|`nearest`), `watch` (`victim`\|`maintank`) | **A16 stacking-debuff tank rotation.** While a tank carries `stacks`+ of `aura` (Mortal Wound, Crunch Armor, Gormok Impale, …), another tank taunts the boss off them. Self-gating (only acts when a swap is due) so wire it under any encounter trigger. Casts via `DoSpecificAction("taunt spell")`, which **force-runs** the class taunt regardless of relevance — so a `suppress` of `"taunt spell"` (to stop a relieved tank auto-taunting back) doesn't block the swap. **`watch`** = `victim` (default): gate on the boss's **current victim** — symmetric ping-pong where the fresh tank has low stacks so no one re-taunts until they rebuild (Kologarn / Festergut / AQ40). `maintank`: gate on the designated **main tank**, so every other tank holds the boss while the MT's stacks decay (Gluth's Mortal Wound — off-tank covers, then releases). `detect:nearest` lets a taunter that doesn't yet threaten the boss locate him. |
+| `tank_swap`       | `JsonTankSwapAction`        | `aura` (debuff name), `stacks` (default 1), `boss` (default file `boss`), `detect` (`threat`\|`nearest`), `watch` (`victim`\|`maintank`) | **A16 stacking-debuff tank rotation** — a self-contained 2-tank swap. Wire it on **both** swap tanks (e.g. `maintank` and `offtank1`). For each: **if I'm the active tank** (the boss is on me) it holds the boss and *yields to my own rotation* so I tank + go ham; **if I'm the off tank** it **stands ready and does NOT attack the boss** (owns the tick, so no premature pull-aggro) until the watched tank carries `stacks`+ of `aura` (Mortal Wound, Crunch Armor, Gormok Impale, …), then it taunts and takes over. Taunt is `DoSpecificAction("taunt spell")` which **force-runs** the class taunt regardless of relevance, so a `suppress` of `"taunt spell"` (to stop a relieved tank auto-taunting back) doesn't block the swap. **`watch`** = `victim` (default): gate on the boss's **current victim** → symmetric ping-pong, each tank takes over when the other hits the cap (Gluth Mortal Wound, Kologarn, Festergut, AQ40). `maintank`: gate on the designated **main tank**, and only the **primary relief tank (assist #0)** acts, so one off-tank covers while the MT detoxes and the rest keep their own job. `detect:nearest` lets a swap tank that isn't currently on the boss still locate him. |
 | `snare_area`      | `JsonSnareAreaAction`       | `spells` (array, ordered), `add` (name/entry), `target` (`self`\|`nearest`\|`leak`), `range`, `boss` (for `leak`) | Cast a control / AoE-threat spell on the adds while a **lower-priority** movement shape (`orbit_point` / `stack_point`) holds the path. Tries each spell in `spells` the bot **knows and has off cooldown**, in order, firing the first that lands — so one rule can list every class's option and each bot fires its own (the Four Horsemen "opening defensive" idiom; generic form of the C++ `CastZombieThreat`). **`target`** = `self` (cast on the bot for self/ground-centered AoE — Frost Nova, Consecration, D&D; requires ≥1 matching add within `range` so a cooldown isn't wasted), `nearest` (the nearest matching add within `range` of the bot), or `leak` (the add **nearest the boss** — the one about to reach it — within `range` of the boss). **Yields** when no add qualifies / nothing is castable, so it layers cleanly over the movement underneath. The Blink/Disengage escape is just this shape: `{spells:["Blink","Disengage"], target:"self"}` under an `adds_near {range:6, count:1}`. |
 | `position_vs_boss`| `JsonPositionVsBossAction`  | `anchor` (`radial_out`\|`behind`\|`front`\|`left`\|`right`), `distance`, `angle_offset`, `only_if_closer`, `boss` | Move to a single spot defined **relative to the boss** (A3/A4). `radial_out` = straight out along the boss→bot bearing (back off wherever you stand); the facing modes = a bearing off the boss's **orientation** (`behind`=+π, `front`=0, `left`=+π/2, `right`=−π/2) plus `angle_offset` (extra radians). `only_if_closer:true` yields once already ≥ `distance` away (a "maintain range" check). Generic form of Grobbulus's move-away (`radial_out`+`only_if_closer`) and go-behind (`behind`+`angle_offset`); also Onyxia move-to-side, Yogg face-away, etc. |
 | `timed_safe_zone` | `JsonTimedSafeZoneAction`   | `zones` (array of `[x,y]`), `pattern` (array of zone indices), `z`, `first_at` (ms), `interval` (ms), `hold` (bool), `cast_while_moving` (bool), `tolerance` (default 5.0) | **A6 eruption dance** as data. The room has fixed safe `zones`; on a deterministic clock one zone after another is the only safe spot. Predicts the current safe zone (`pattern[k]` where `k` counts eruptions from `first_at`/`interval`) and stands on it. The generic form of `HeiganDanceAction`. `hold:true` = own the tick even when parked (tight cadence, no casting); `hold:false` = yield once parked so rotations run between eruptions. `cast_while_moving:true` = while **en route**, yield the tick so the bot's rotation fires INSTANTS as it relocates (the engine refuses cast-time spells while moving, so only instants come out) — **requires a `suppress` rule** (below) zeroing the movement-hijackers, else they grab the yielded tick. Per-bot clock auto-anchors on first run and re-anchors after a long idle gap (the rule going dormant across the *other* phase), so gate each phase with its own rule + cadence. |
@@ -206,7 +237,7 @@ Evaluated per bot (it reads *that* bot's target), so the bots on the **ahead**
 { "shape": "position_vs_boss","params": { "anchor": "behind", "distance": 24.0, "angle_offset": 0.3927 }, "priority": 2 }
 { "shape": "snare_area",      "params": { "spells": ["Frost Nova","Arcane Explosion","Frost Trap"], "add": "zombie chow", "target": "self", "range": 10.0 }, "priority": 2 }
 { "shape": "snare_area",      "params": { "spells": ["Concussive Shot","Cone of Cold"], "add": "zombie chow", "target": "leak", "boss": "gluth" }, "priority": 2 }
-{ "shape": "tank_swap",       "params": { "aura": "mortal wound", "stacks": 5, "boss": "gluth", "detect": "nearest", "watch": "maintank" }, "priority": 5 }
+{ "shape": "tank_swap",       "params": { "aura": "mortal wound", "stacks": 3, "boss": "gluth", "detect": "nearest", "watch": "victim" }, "priority": 5 }
 { "shape": "tank_swap",       "params": { "aura": "crunch armor", "stacks": 3 }, "priority": 3 }
 ```
 

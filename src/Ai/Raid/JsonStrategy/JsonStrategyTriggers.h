@@ -77,6 +77,26 @@ public:
     std::string const getName() override { return "json hpahead::" + qualifier; }
 };
 
+// Shape "manual_engage": the "call the pull" gate. Fires while the bot's owner
+// has issued `.rjson pull` (RaidJsonMode::IsEngaged) AND `role` matches AND (if
+// `add` is given) that add is alive within `range` yards. Lets the raid leader
+// kick off the engage ON COMMAND instead of waiting for something to wander into
+// combat — e.g. main tank on one add, off-tank on the other. The `range`
+// proximity gate is the pathing trick: a bot FAR from its add stays out of the
+// rule and just follows the master up the ramp (bots can't path the long
+// low->high climb on their own), breaking off to engage only once led close; and
+// a tank yanked off by Magnetic Pull falls out of range so the in-combat
+// nearest-pet rule retargets it. Qualifier: "add=<name/entry>|role=<csv>|
+// range=<yds>" (all optional).
+class JsonManualEngageTrigger : public Trigger, public Qualified
+{
+public:
+    JsonManualEngageTrigger(PlayerbotAI* ai) : Trigger(ai, "json engage") {}
+
+    bool IsActive() override;
+    std::string const getName() override { return "json engage::" + qualifier; }
+};
+
 // Shape "pre_cast_window": fires in the short window just BEFORE a boss's
 // periodic cast, so externals/defensives are pre-applied and carry through the
 // hit (e.g. Maexxna's 40s Web Spray raid stun — reactive healing can't help
