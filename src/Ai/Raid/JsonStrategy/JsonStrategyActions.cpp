@@ -1,6 +1,8 @@
 #include "JsonStrategyActions.h"
 
+#include "JsonStrategyLoader.h"  // RaidJsonMode (pull-epoch -- fresh-pull latch reset)
 #include "JsonStrategyShapeUtil.h"
+#include "Config.h"            // sConfigMgr -- RaidJson.Debug gate for the climb log
 #include "Playerbots.h"
 #include "Timer.h"
 
@@ -376,6 +378,23 @@ bool JsonMoveToTargetAction::Execute(Event /*event*/)
     if (!_valid)
         return false;
 
+    // FRESH-PULL RESET: when `.rjson pull` is called the RaidJsonMode pull-epoch
+    // bumps; on mismatch with this action's last-seen, clear BOTH latches so we
+    // re-climb to the NAMED `target` (re-establishes the MT/OT split). Required
+    // because re-pulling a wipe doesn't clear the bot's IsInCombat() flag, so the
+    // existing `!IsInCombat() && far` reset failed and `_everReached` survived --
+    // seen in the kill-attempt log (2026-05-28): Gheed had _everReached=true from
+    // a prior swap and headed to STALAGG on re-pull (his `then` nearest add) while
+    // Luucious headed to FEUGEN, leaving each tank on the WRONG add and the add
+    // they were *supposed* to tank with no one on it (DPS/healers there died).
+    uint32 epoch = RaidJsonMode::instance().PullEpoch();
+    if (epoch != _lastSeenPullEpoch)
+    {
+        _lastSeenPullEpoch = epoch;
+        _reached = false;
+        _everReached = false;
+    }
+
     // Pick the NEAREST live creature matching `target`. The candidate source is a
     // proximity scan by default so it sees off-threat adds (the pull); falls back
     // to the boss by name when no named target is alive.
@@ -457,13 +476,18 @@ bool JsonMoveToTargetAction::Execute(Event /*event*/)
         _everReached = true;
     }
 
-    // Debug instrumentation, throttled to ~1/s per bot. Watch the climb: the bot's Z
-    // should rise toward the target's Z; reached=1 means handed off to the C++.
+    // Debug instrumentation, gated behind `RaidJson.Debug` (default OFF) and throttled
+    // to ~1/s per bot. Watch the climb: the bot's Z should rise toward the target's Z;
+    // reached=1 means handed off to the C++. Off by default because a 25-man pull spams
+    // ~25 lines/sec to the console -- set `RaidJson.Debug = 1` in playerbots.conf and
+    // `.reload config` when you actually need to watch a climb.
     uint32 now = getMSTime();
-    bool logTick = (now - _lastLogMs > 1000);
+    bool throttleOk = (now - _lastLogMs > 1000);
+    if (throttleOk)
+        _lastLogMs = now;
+    bool logTick = throttleOk && sConfigMgr->GetOption<bool>("RaidJson.Debug", false);
     if (logTick)
     {
-        _lastLogMs = now;
         LOG_INFO("playerbots",
                  "[RaidJson][move_to_target] {} -> {} (entry {}): bot=({:.1f},{:.1f},{:.1f}) "
                  "target=({:.1f},{:.1f},{:.1f}) dist={:.1f} stopAt={:.1f} reached={} combat={}",

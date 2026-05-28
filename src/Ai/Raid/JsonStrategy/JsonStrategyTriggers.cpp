@@ -181,6 +181,26 @@ static Unit* FindNearbyNamed(PlayerbotAI* botAI, GuidVector const& npcs, std::st
     return nullptr;
 }
 
+// "Is `boss` the active encounter for this bot?" — the boss-scope predicate used
+// by JsonScopedTrigger to keep one boss's rules out of another's.
+//
+// RESOLVER: EXPLICIT active-boss selection. `.rjson pull <boss>` (by name or by
+// the caller's target) records the chosen boss per bot; a rule fires only while
+// its file boss equals that selection. This is deliberately NOT proximity- or
+// threat-inferred: an idle swap tank standing off the boss, or a non-targetable
+// boss like Thaddius during his adds phase, both broke presence-inference -- the
+// rules silently went inert. Explicit selection is unambiguous and lets the
+// leader say exactly which fight is live. `.rjson off`/`stop` clears it.
+//
+// Empty `boss` = an unscoped file (no top-level `boss`) -> always active.
+static bool JsonBossActive(Player* bot, std::string const& boss)
+{
+    if (boss.empty())
+        return true;
+    std::string active = RaidJsonMode::instance().EngagedBoss(bot->GetGUID());
+    return !active.empty() && IEquals(active, boss);
+}
+
 bool JsonEncounterActiveTrigger::IsActive()
 {
     if (qualifier.empty())
@@ -367,7 +387,10 @@ bool JsonTargetVictimTrigger::IsActive()
 // ---------------------------------------------------------------------------
 bool JsonManualEngageTrigger::IsActive()
 {
-    // Only while the raid leader has called the pull (`.rjson pull`).
+    // Only while the raid leader has called the pull (`.rjson pull <boss>`). The
+    // boss match itself is enforced by the `json scoped` wrapper this rule is
+    // always wrapped in (file boss == the pulled boss), so here we only confirm a
+    // pull is live at all.
     if (!RaidJsonMode::instance().IsEngaged(bot->GetGUID()))
         return false;
 
@@ -494,4 +517,77 @@ bool JsonPreCastWindowTrigger::IsActive()
     // Open `lead` before the prediction, hold `tail` past it (covers a cast
     // delayed by an in-progress boss ability); the re-anchor closes it cleanly.
     return now + _lead >= _nextCastMs && now <= _nextCastMs + _tail;
+}
+
+// ---------------------------------------------------------------------------
+// json scoped (internal per-file boss-scope wrapper — Part A)
+// ---------------------------------------------------------------------------
+void JsonScopedTrigger::Qualify(std::string const qual)
+{
+    Qualified::Qualify(qual);
+    // "<boss>\x1f<inner trigger name>". The \x1f (unit separator) is used because
+    // the inner name itself contains '|' '=' '::' (a normal qualifier), so none of
+    // those can split boss from inner.
+    std::string::size_type sep = qual.find('\x1f');
+    if (sep == std::string::npos)
+    {
+        _boss.clear();
+        _innerName = qual;  // no scope encoded -> behave as a transparent pass-through
+    }
+    else
+    {
+        _boss = qual.substr(0, sep);
+        _innerName = qual.substr(sep + 1);
+    }
+}
+
+// Resolve (and cache) the inner trigger from the shared per-bot context, exactly
+// as the engine would have created it unwrapped -- so a stateful inner (e.g.
+// pre_cast_window's per-bot clock) keeps its single cached instance.
+Trigger* JsonScopedTrigger::Inner()
+{
+    if (!_resolved)
+    {
+        _inner = _innerName.empty() ? nullptr : context->GetTrigger(_innerName);
+        _resolved = true;
+    }
+    return _inner;
+}
+
+bool JsonScopedTrigger::IsActive()
+{
+    if (!JsonBossActive(bot, _boss))
+        return false;
+    Trigger* in = Inner();
+    return in && in->IsActive();
+}
+
+std::vector<NextAction> JsonScopedTrigger::getHandlers()
+{
+    Trigger* in = Inner();
+    return in ? in->getHandlers() : std::vector<NextAction>();
+}
+
+void JsonScopedTrigger::Reset()
+{
+    if (Trigger* in = Inner())
+        in->Reset();
+}
+
+Unit* JsonScopedTrigger::GetTarget()
+{
+    Trigger* in = Inner();
+    return in ? in->GetTarget() : Trigger::GetTarget();
+}
+
+Value<Unit*>* JsonScopedTrigger::GetTargetValue()
+{
+    Trigger* in = Inner();
+    return in ? in->GetTargetValue() : Trigger::GetTargetValue();
+}
+
+std::string const JsonScopedTrigger::GetTargetName()
+{
+    Trigger* in = Inner();
+    return in ? in->GetTargetName() : Trigger::GetTargetName();
 }

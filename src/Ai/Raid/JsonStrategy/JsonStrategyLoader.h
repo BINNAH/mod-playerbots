@@ -17,6 +17,7 @@
 #include "Define.h"  // uint32
 #include "ObjectGuid.h"
 
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -41,13 +42,30 @@ public:
     // stop`/`off`. Read by the `manual_engage` trigger so tanks pre-position and
     // pull their assigned add ON COMMAND, instead of waiting for something to
     // wander into combat. In-memory, per bot (set for all of an owner's bots).
-    void SetEngaged(ObjectGuid bot, bool on);
+    //
+    // `boss` is the BOSS-SCOPED pull (the creature the caller had targeted at
+    // `.rjson pull`): manual_engage rules only fire for that boss's file, so a
+    // pull called on boss A never arms boss B's pull rules when you later walk
+    // into B's room without `.rjson stop`. Empty (no target / `.rjson off`) =
+    // scoped by presence only (the per-file `json scoped` wrapper still gates it).
+    void SetEngaged(ObjectGuid bot, bool on, std::string const& boss = "");
     bool IsEngaged(ObjectGuid bot) const;
+    std::string EngagedBoss(ObjectGuid bot) const;
+
+    // Monotonic counter incremented once per `.rjson pull` invocation. Per-bot
+    // actions that carry STATE across the encounter (move_to_target's reached /
+    // ever-reached latches, used for the Thaddius tank swap-recovery) compare
+    // their last-seen value to detect a fresh pull and reset -- the IsEngaged
+    // flag is idempotent and the bot's IsInCombat() flag is unreliable across
+    // wipes, so neither alone signals "the user just called a new pull."
+    void RecordPull() { ++_pullEpoch; }
+    uint32 PullEpoch() const { return _pullEpoch; }
 
 private:
     RaidJsonMode() = default;
     std::set<ObjectGuid> _bots;
-    std::set<ObjectGuid> _engaged;
+    std::map<ObjectGuid, std::string> _engaged;  // bot -> pull boss name ("" = any)
+    uint32 _pullEpoch = 0;
 };
 
 // One action under a trigger. `name` is the fully-resolved factory name
@@ -96,6 +114,12 @@ public:
     std::vector<JsonResolvedRule> const& Rules() const { return _rules; }
     std::vector<JsonResolvedSuppress> const& SuppressRules() const { return _suppress; }
 
+    // The set of boss names that have a loaded strategy file (lowercased). Used by
+    // `.rjson pull <boss>` to validate the requested boss and to list the choices
+    // on a miss. A pull only activates rules whose file boss is in this set.
+    bool HasBoss(std::string const& bossLower) const { return _bosses.count(bossLower) > 0; }
+    std::set<std::string> const& KnownBosses() const { return _bosses; }
+
     // --- status / diagnostics (populated by Load) ---
     std::string const& SourceDir() const { return _sourceDir; }
     uint32 FileCount() const { return _fileCount; }
@@ -110,6 +134,7 @@ private:
 
     std::vector<JsonResolvedRule> _rules;
     std::vector<JsonResolvedSuppress> _suppress;
+    std::set<std::string> _bosses;  // lowercased file boss names (pull targets)
     std::string _sourceDir;
     uint32 _fileCount = 0;
     std::vector<std::string> _errors;

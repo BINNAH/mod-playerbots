@@ -301,6 +301,25 @@ Magnetic Pull swaps, the transition jump, polarity). Existing C++ AI does:
   geometrically fine (left↔right melee ≈16y, left↔right ranged ≈32y, both > the 10y
   cross-charge damage radius); the bug was never the anchors, it was the yield window.
 
+- **Tanks went to the WRONG add on re-pulls — pull-epoch reset (2026-05-28).** The
+  `then` swap-recovery latch (`_everReached`) is sticky on purpose: once a tank has
+  reached its add it switches to nearest-of-`then` so a Magnetic Pull sends it to the
+  new add, not back to the original. The original reset condition `!bot->IsInCombat()
+  && far` looked sufficient — bots after a wipe are usually out of combat — but the
+  kill-attempt log proved it isn't: `combat=1` at the very first move_to_target tick
+  of the new pull (the bot's IsInCombat flag carried across the wipe), so the reset
+  never fired and `_everReached` survived. **Result:** on re-pull Gheed (OT, *assigned
+  Feugen*) had stale `_everReached=true`, his target became nearest-of-[stalagg,feugen]
+  from his flung-up position at z≈338.9, **Stalagg** won → he climbed onto Stalagg
+  instead of Feugen. Luucious did the mirror image (climbed onto Feugen). **Both
+  tanks on the wrong adds, the add they were assigned had no tank, the DPS/healers
+  who climbed to it got eaten — the 4–5 opening deaths in the kill log.** **Fix:**
+  a monotonic **pull-epoch** counter on `RaidJsonMode`, bumped once per `.rjson pull`;
+  `JsonMoveToTargetAction` tracks its last-seen epoch and resets BOTH latches on
+  mismatch. `.rjson pull` is now the canonical "start fresh" signal — IsEngaged is
+  idempotent and IsInCombat() is too unreliable across wipes. (C++ change in
+  `RaidJsonMode` + `HandlePullCommand` + `JsonMoveToTargetAction` — needs a rebuild.)
+
 - **The low→high ramp climb needs an EXACT-waypoint `MoveTo` (preserve the
   destination z).** This bit us repeatedly, and *neither* a fixed-point `stack_point`
   *nor* a "move toward the live add" approach fixes it on its own — both still route

@@ -236,6 +236,7 @@ private:
     bool _everReached = false;   // sticky: reached at least once this engagement (swap recovery)
     std::string _thenCsv;        // swap-recovery target set; empty = no recovery (latch permanent)
     uint32 _lastLogMs = 0;       // per-bot throttle for the debug log
+    uint32 _lastSeenPullEpoch = 0;  // RaidJsonMode pull-epoch: reset latches on `.rjson pull`
 };
 
 // Shape "snare_area": cast a control / AoE-threat spell on adds while a separate

@@ -3,11 +3,19 @@
 #include "Config.h"
 #include "Log.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 
 #include "json.hpp"
+
+static std::string ToLower(std::string s)
+{
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    return s;
+}
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -37,10 +45,10 @@ bool RaidJsonMode::IsActive(ObjectGuid bot) const
     return _bots.find(bot) != _bots.end();
 }
 
-void RaidJsonMode::SetEngaged(ObjectGuid bot, bool on)
+void RaidJsonMode::SetEngaged(ObjectGuid bot, bool on, std::string const& boss)
 {
     if (on)
-        _engaged.insert(bot);
+        _engaged[bot] = boss;
     else
         _engaged.erase(bot);
 }
@@ -48,6 +56,12 @@ void RaidJsonMode::SetEngaged(ObjectGuid bot, bool on)
 bool RaidJsonMode::IsEngaged(ObjectGuid bot) const
 {
     return _engaged.find(bot) != _engaged.end();
+}
+
+std::string RaidJsonMode::EngagedBoss(ObjectGuid bot) const
+{
+    auto it = _engaged.find(bot);
+    return it != _engaged.end() ? it->second : std::string();
 }
 
 std::string RaidJsonRuleSet::ResolveDir() const
@@ -298,6 +312,7 @@ void RaidJsonRuleSet::Load()
 {
     std::vector<JsonResolvedRule> rules;
     std::vector<JsonResolvedSuppress> suppress;
+    std::set<std::string> bosses;
     std::vector<std::string> errors;
     uint32 fileCount = 0;
 
@@ -317,6 +332,7 @@ void RaidJsonRuleSet::Load()
         errors.push_back("directory not found: " + _sourceDir);
         LOG_ERROR("server.loading", "[RaidJson] directory not found: {}", _sourceDir);
         _rules = std::move(rules);
+        _bosses.clear();
         _errors = std::move(errors);
         _fileCount = 0;
         _loadedOnce = true;
@@ -353,6 +369,23 @@ void RaidJsonRuleSet::Load()
         }
 
         std::string fileBoss = j.value("boss", std::string());
+        if (!fileBoss.empty())
+            bosses.insert(ToLower(fileBoss));  // a `.rjson pull <boss>` target
+
+        // Part A — per-file boss scope. Wrap a resolved trigger name so it only
+        // fires while this file's boss is the ACTIVE encounter for the bot (see
+        // JsonScopedTrigger). This is what stops one boss's rules -- especially
+        // boss-agnostic ones like manual_engage (`.rjson pull`) and Level-1 named
+        // gates ("has attackers") -- from firing in another boss's room. The
+        // \x1f (unit separator) splits <boss> from the inner name, which itself
+        // contains '|' '=' '::' and so can't share their delimiters. Files with
+        // no `boss` stay unwrapped (can't be scoped).
+        auto wrapScope = [&fileBoss](std::string const& inner) -> std::string
+        {
+            if (fileBoss.empty())
+                return inner;
+            return "json scoped::" + fileBoss + '\x1f' + inner;
+        };
 
         if (!j.contains("rules") || !j["rules"].is_array())
         {
@@ -372,6 +405,7 @@ void RaidJsonRuleSet::Load()
             }
             if (!ResolveTrigger(ruleJson["trigger"], fileBoss, fname, errors, rule.trigger))
                 continue;
+            rule.trigger = wrapScope(rule.trigger);
 
             // ---- actions ----
             if (!ruleJson.contains("actions") || !ruleJson["actions"].is_array())
@@ -751,6 +785,7 @@ void RaidJsonRuleSet::Load()
                 JsonResolvedSuppress sup;
                 if (!ResolveTrigger(sJson["trigger"], fileBoss, fname, errors, sup.trigger))
                     continue;
+                sup.trigger = wrapScope(sup.trigger);
                 if (!sJson.contains("actions") || !sJson["actions"].is_array())
                 {
                     errors.push_back(fname + ": suppress entry without 'actions' array");
@@ -773,6 +808,7 @@ void RaidJsonRuleSet::Load()
 
     _rules = std::move(rules);
     _suppress = std::move(suppress);
+    _bosses = std::move(bosses);
     _errors = std::move(errors);
     _fileCount = fileCount;
     _loadedOnce = true;

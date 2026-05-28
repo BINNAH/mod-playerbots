@@ -8,10 +8,13 @@
  *   .rjson off      remove "json-raid" and restore the proper C++ strategy.
  *   .rjson status   show source dir, file/rule/error counts, and how many of
  *                   your bots are running json-raid.
- *   .rjson pull     "call the pull": flag your bots engaged so the manual_engage
- *                   rules fire (tanks run in + pull their assigned add) without
- *                   waiting for combat. Announces in party/raid.
- *   .rjson stop     clear the engage flag (re-arm before the next pull / abort).
+ *   .rjson pull <boss>
+ *                   "call the pull" AND select the active boss whose strategy
+ *                   runs: pass a boss name (`.rjson pull thaddius`) or target the
+ *                   boss and omit it. ONLY that boss's rules activate; errors if
+ *                   the boss has no loaded strategy. Flags your bots engaged so
+ *                   the manual_engage rules fire. Announces in party/raid.
+ *   .rjson stop     clear the active boss / engage flag (re-arm or abort).
  */
 #ifndef _PLAYERBOT_JSONSTRATEGYCOMMANDS_H
 #define _PLAYERBOT_JSONSTRATEGYCOMMANDS_H
@@ -30,7 +33,7 @@ public:
     static bool HandleOnCommand(ChatHandler* handler);
     static bool HandleOffCommand(ChatHandler* handler);
     static bool HandleStatusCommand(ChatHandler* handler);
-    static bool HandlePullCommand(ChatHandler* handler);
+    static bool HandlePullCommand(ChatHandler* handler, Acore::ChatCommands::Tail bossName);
     static bool HandleStopCommand(ChatHandler* handler);
 };
 

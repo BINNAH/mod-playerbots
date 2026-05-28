@@ -25,10 +25,45 @@ See also: `RAID_AI_PATTERNS.md` (shape vocabulary) and `RAID_AI_INVENTORY.md`
 - Drop `*.json` in the directory the worldserver reads at runtime. Default:
   **`<worldserver-cwd>/raid_strategies/`** (i.e. `server/raid_strategies/`).
 - Override with `RaidJson.Dir = some/path/` in any loaded `.conf`.
-- The loader merges **all** `*.json` in the directory into one rule set. Triggers
-  self-gate, so loading every boss at once is fine.
+- The loader merges **all** `*.json` in the directory into one rule set. Every
+  rule is **auto-scoped to its file's `boss`** (see "Boss scoping" below), so
+  loading every boss at once is fine — one boss's rules never fire in another's
+  room.
 - Standard JSON (no `//` comments). You can stash notes in an unused key like
   `"_comment"` — the loader ignores keys it doesn't use.
+
+### Boss scoping (automatic — you don't author it)
+
+The whole catalog is loaded at once, so without scoping a boss-agnostic trigger
+fires in the wrong room. Two were doing exactly that: `manual_engage` (keyed only
+on the global `.rjson pull` flag + role) and Level-1 named gates like
+`"has attackers"` (attacker-count ≥ 1, no boss notion). At Gluth they fired
+Thaddius's `move_to_target → feugen` and Noth's `tank_adds → plagued *` for every
+off-tank — all failing every tick and crowding out the bot's real Gluth job.
+
+The loader wraps **every** resolved trigger (shapes *and* Level-1 names, rules
+*and* `suppress`) in an internal `json scoped` trigger keyed on the file's `boss`.
+A rule only fires while that boss is the **active boss** for the bot, which you set
+**explicitly** with `.rjson pull <boss>` (see below). `encounter_active` still does
+its own internal boss detection on top; scoping extends the *selection* guarantee
+to the triggers that had none (`manual_engage`, Level-1 names like
+`"has attackers"`). **You author nothing for this** — just give every file a
+top-level `boss` (a file with none stays unscoped/global).
+
+Why explicit selection and not proximity/threat inference (the first attempt):
+an idle swap tank standing off the boss, and a non-targetable boss (Thaddius during
+his adds phase — `UNIT_FLAG_NON_ATTACKABLE`, so no threat and easily out of a
+proximity scan), both made presence-inference silently gate the rules **off** and
+the bots went inert. Naming the fight is unambiguous. The single swap point if you
+ever want a different resolver is `JsonBossActive()` in `JsonStrategyTriggers.cpp`.
+
+**The pull selects the active boss.** `.rjson pull <boss>` (e.g.
+`.rjson pull thaddius`) — or `.rjson pull` with a **selectable** boss targeted —
+records that boss as active for all your bots; **only that boss's rules run**, and
+it satisfies `manual_engage`'s engage check so tanks run in. A non-targetable boss
+must be named. Unknown/unloaded boss → an error listing the known bosses (no silent
+no-op). `.rjson stop`/`off` clears the selection. So the flow is `.rjson on` (attach
+json mode, bots idle) → `.rjson pull <boss>` (that fight goes live).
 
 ---
 
@@ -39,11 +74,11 @@ See also: `RAID_AI_PATTERNS.md` (shape vocabulary) and `RAID_AI_INVENTORY.md`
 | `.rjson status`  | Source dir, file/rule/error counts, how many of your bots run it.            |
 | `.rjson reload`  | Re-read every JSON file, rebuild the rule set, re-init your json-raid bots.   |
 | `.rjson on`      | For your bots: strip their C++ instance strategy, add `json-raid` (A/B swap). Announces "type `.rjson pull` …" in party/raid. |
-| `.rjson off`     | For your bots: remove `json-raid`, restore the proper C++ instance strategy. Also clears the engage flag.  |
-| `.rjson pull`    | **"Call the pull."** Flags your bots engaged so the `manual_engage` rules fire (tanks run in + pull their assigned add) without waiting for combat. Announces in party/raid. |
-| `.rjson stop`    | Clear the engage flag — re-arm before the next pull, or abort one. |
+| `.rjson off`     | For your bots: remove `json-raid`, restore the proper C++ instance strategy. Also clears the active boss / engage flag.  |
+| `.rjson pull <boss>` | **"Call the pull" AND select the active boss.** `.rjson pull thaddius` (by name) or `.rjson pull` with a selectable boss targeted. ONLY that boss's rules activate (every other boss's stay inert); also flags your bots engaged so `manual_engage` rules fire. Errors (lists known bosses) if the boss has no loaded strategy. Announces in party/raid. |
+| `.rjson stop`    | Clear the active boss / engage flag — re-arm before the next pull, or abort one. |
 
-Tuning loop: `.rjson on` → pull → edit JSON → `.rjson reload` → re-pull. No build.
+Tuning loop: `.rjson on` → `.rjson pull <boss>` → edit JSON → `.rjson reload` → re-pull. No build.
 
 ---
 

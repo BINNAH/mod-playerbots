@@ -70,6 +70,7 @@ public:
         creators["json hpahead"] = &JsonStrategyTriggerContext::json_hpahead;
         creators["json engage"] = &JsonStrategyTriggerContext::json_engage;
         creators["json targetvictim"] = &JsonStrategyTriggerContext::json_targetvictim;
+        creators["json scoped"] = &JsonStrategyTriggerContext::json_scoped;
     }
 
 private:
@@ -79,6 +80,7 @@ private:
     static Trigger* json_hpahead(PlayerbotAI* ai) { return new JsonTargetHpAheadTrigger(ai); }
     static Trigger* json_engage(PlayerbotAI* ai) { return new JsonManualEngageTrigger(ai); }
     static Trigger* json_targetvictim(PlayerbotAI* ai) { return new JsonTargetVictimTrigger(ai); }
+    static Trigger* json_scoped(PlayerbotAI* ai) { return new JsonScopedTrigger(ai); }
 };
 
 #endif

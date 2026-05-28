@@ -4,6 +4,8 @@
 #include "JsonStrategyLoader.h"
 #include "Playerbots.h"
 
+#include <algorithm>
+#include <cctype>
 #include <fmt/core.h>
 #include <functional>
 #include <string>
@@ -240,7 +242,19 @@ bool RaidJsonCommandScript::HandleStatusCommand(ChatHandler* handler)
     return true;
 }
 
-bool RaidJsonCommandScript::HandlePullCommand(ChatHandler* handler)
+// Lowercase + trim a boss name for matching against the loaded file bosses.
+static std::string NormalizeBossName(std::string s)
+{
+    size_t a = s.find_first_not_of(" \t");
+    size_t b = s.find_last_not_of(" \t");
+    if (a == std::string::npos)
+        return "";
+    s = s.substr(a, b - a + 1);
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    return s;
+}
+
+bool RaidJsonCommandScript::HandlePullCommand(ChatHandler* handler, Acore::ChatCommands::Tail bossName)
 {
     Player* master = MasterFromHandler(handler);
     if (!master)
@@ -249,17 +263,55 @@ bool RaidJsonCommandScript::HandlePullCommand(ChatHandler* handler)
         return true;
     }
 
-    // Flag every owned bot engaged. The manual_engage rules then fire (until the
-    // bot enters combat): tanks run up to their assigned adds and pull. The flag
-    // stays set so it survives the brief pre-combat window; combat itself gates
-    // the rules off, and `.rjson stop`/`off` clears it.
-    uint32 count = ForEachOwnedBot(master, [](PlayerbotAI* /*ai*/, Player* bot)
+    RaidJsonRuleSet& rs = RaidJsonRuleSet::instance();
+
+    // Resolve which boss's strategy this pull activates: the explicit argument
+    // (`.rjson pull thaddius`) wins; otherwise the caller's current target (so you
+    // can target a selectable boss like Gluth and just type `.rjson pull`). A
+    // non-targetable boss (Thaddius during adds) MUST be named.
+    std::string boss = NormalizeBossName(std::string(bossName));
+    if (boss.empty())
+        if (Unit* tgt = master->GetSelectedUnit())
+            boss = NormalizeBossName(tgt->GetName());
+
+    if (boss.empty())
     {
-        RaidJsonMode::instance().SetEngaged(bot->GetGUID(), true);
+        handler->SendSysMessage("RaidJson: PULL needs a boss — target one, or type `.rjson pull <boss>`.");
+        return true;
+    }
+
+    // Validate against the loaded strategies, so a typo / unsupported boss is a
+    // clear error instead of a silent no-op (every rule would just stay inert).
+    if (!rs.HasBoss(boss))
+    {
+        std::string known;
+        for (std::string const& b : rs.KnownBosses())
+            known += (known.empty() ? "" : ", ") + b;
+        handler->SendSysMessage(fmt::format("RaidJson: no strategy loaded for '{}'. Known bosses: {}",
+                                            boss, known.empty() ? "(none)" : known));
+        return true;
+    }
+
+    // Bump the pull epoch BEFORE flagging bots: per-bot actions with state across
+    // the encounter (move_to_target's reached / ever-reached latches for the
+    // Thaddius tank swap-recovery) compare their last-seen epoch on Execute and
+    // reset on mismatch. Required because re-pulling a wipe doesn't clear the bot's
+    // IsInCombat() flag, so the stale `_everReached` survived and tanks went to
+    // the WRONG add on the next pull (e.g. OT to Stalagg instead of Feugen).
+    RaidJsonMode::instance().RecordPull();
+
+    // Set the active boss for every owned bot. This is the ONE gate the `json
+    // scoped` wrapper checks: only this boss's rules run; every other boss's rules
+    // stay inert. It also satisfies manual_engage's engage check so tanks run up
+    // to their adds and pull. `.rjson stop`/`off` clears it.
+    uint32 count = ForEachOwnedBot(master, [&boss](PlayerbotAI* /*ai*/, Player* bot)
+    {
+        RaidJsonMode::instance().SetEngaged(bot->GetGUID(), true, boss);
     });
 
-    AnnounceToGroup(master, "Pulling! Tanks in on your adds — go go go!");
-    handler->SendSysMessage(fmt::format("RaidJson: PULL called — {} bot(s) engaged. (.rjson stop to re-arm / abort)", count));
+    AnnounceToGroup(master, fmt::format("Pulling {}! Tanks in on your adds — go go go!", boss));
+    handler->SendSysMessage(fmt::format("RaidJson: PULL — '{}' strategy active for {} bot(s). (.rjson stop to re-arm / abort)",
+                                        boss, count));
     return true;
 }
 

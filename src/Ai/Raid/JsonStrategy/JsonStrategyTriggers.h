@@ -9,6 +9,8 @@
 #include "NamedObjectContext.h"  // Qualified
 #include "Trigger.h"
 
+#include <vector>
+
 // Shape T7 "encounter_active": the universal raid condition. Active while a
 // named boss is engaged/found, optionally narrowed by:
 //   - role : only fire for bots of a role (comma-list, OR semantics):
@@ -157,6 +159,39 @@ private:
     uint32 _combatStartMs = 0;
     uint32 _nextCastMs = 0;
     bool   _castSeen = false;
+};
+
+// Internal scope wrapper (NOT authored directly — the loader wraps every rule's
+// resolved trigger in this). Gates an inner trigger on its file's boss being the
+// ACTIVE encounter for the bot, so one boss's rules never fire in another boss's
+// room. This is the uniform fix for cross-boss contamination: it scopes BOTH the
+// generic shapes and Level-1 named triggers ("has attackers", four_horsemen),
+// since it wraps the resolved name regardless of what it is.
+//
+// Qualifier: "<boss>\x1f<inner trigger name>" (the loader builds it; \x1f because
+// the inner name contains '|' '=' '::'). Delegates getHandlers/Reset/GetTarget to
+// the inner so wrapping is transparent to the rest of the engine.
+class JsonScopedTrigger : public Trigger, public Qualified
+{
+public:
+    JsonScopedTrigger(PlayerbotAI* ai) : Trigger(ai, "json scoped") {}
+
+    void Qualify(std::string const qual) override;
+    bool IsActive() override;
+    std::vector<NextAction> getHandlers() override;
+    void Reset() override;
+    Unit* GetTarget() override;
+    Value<Unit*>* GetTargetValue() override;
+    std::string const GetTargetName() override;
+    std::string const getName() override { return "json scoped[" + _boss + "]::" + _innerName; }
+
+private:
+    Trigger* Inner();
+
+    std::string _boss;
+    std::string _innerName;
+    Trigger*    _inner = nullptr;
+    bool        _resolved = false;
 };
 
 #endif
