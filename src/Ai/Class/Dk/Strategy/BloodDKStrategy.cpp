@@ -141,7 +141,17 @@ void BloodDKStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         new TriggerNode(
             "low health",
             {
-                NextAction("army of the dead", ACTION_HIGH + 4),
+                // Army of the Dead intentionally NOT here for Blood (tank). The 6s
+                // channel locks the tank in place under exactly the damage that fired
+                // the trigger, and the ghouls don't tank -- they grab threat off the
+                // tank that just channeled. With a reset-CD NPC AOTD is always up, so
+                // the FIRST low-HP blip of any fight (incidental climb damage on
+                // Thaddius's add platforms, a fresh trash pull) burns the channel.
+                // Real Blood tank survival CDs (vampiric blood @ critical health,
+                // icebound fortitude, rune tap, death strike here) cover this. DPS
+                // specs keep AOTD on their `"army of the dead"` trigger (Frost/Unholy
+                // strategies, ACTION_HIGH + 6) where it's a damage CD, not a panic
+                // button. (2026-05-28)
                 NextAction("death strike", ACTION_HIGH + 3)
             }
         )
