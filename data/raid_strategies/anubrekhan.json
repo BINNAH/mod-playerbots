@@ -4,44 +4,121 @@
   "rules": [
     {
       "_comment": "Main tank holds the boss outside Locust Swarm.",
-      "trigger": { "shape": "encounter_active", "role": "maintank", "boss_aura": "locust swarm", "aura_present": false },
+      "trigger": {
+        "shape": "encounter_active",
+        "role": "maintank",
+        "boss_aura": "locust swarm",
+        "aura_present": false
+      },
       "actions": [
-        { "shape": "attack", "params": { "targets": "anub'rekhan" }, "priority": 1 }
+        {
+          "shape": "attack",
+          "params": {
+            "targets": "anub'rekhan"
+          },
+          "priority": 1
+        }
       ]
     },
     {
       "_comment": "Main tank kites the boss around the room during Locust Swarm.",
-      "trigger": { "shape": "encounter_active", "role": "maintank", "boss_aura": "locust swarm", "aura_present": true },
+      "trigger": {
+        "shape": "encounter_active",
+        "role": "maintank",
+        "boss_aura": "locust swarm",
+        "aura_present": true
+      },
       "actions": [
-        { "shape": "orbit_point", "params": { "x": 3272.49, "y": -3476.27, "radius": 45.0, "segments": 16, "clockwise": true }, "priority": 3 }
+        {
+          "shape": "orbit_point",
+          "params": {
+            "x": 3272.49,
+            "y": -3476.27,
+            "radius": 45.0,
+            "segments": 16,
+            "clockwise": true
+          },
+          "priority": 3
+        }
       ]
     },
     {
       "_comment": "Everyone but the main tank stacks tightly in the center during Locust Swarm.",
-      "trigger": { "shape": "encounter_active", "role": "notmaintank", "boss_aura": "locust swarm", "aura_present": true },
+      "trigger": {
+        "shape": "encounter_active",
+        "role": "notmaintank",
+        "boss_aura": "locust swarm",
+        "aura_present": true
+      },
       "actions": [
-        { "shape": "stack_point", "params": { "x": 3272.49, "y": -3476.27, "radius": 4.0 }, "priority": 3 }
+        {
+          "shape": "stack_point",
+          "params": {
+            "x": 3272.49,
+            "y": -3476.27,
+            "radius": 4.0
+          },
+          "priority": 3
+        }
       ]
     },
     {
       "_comment": "Off-tank grabs the Crypt Guards and tanks them on the boss, outside Locust Swarm.",
-      "trigger": { "shape": "encounter_active", "role": "offtank", "boss_aura": "locust swarm", "aura_present": false },
+      "trigger": {
+        "shape": "encounter_active",
+        "role": "offtank",
+        "boss_aura": "locust swarm",
+        "aura_present": false
+      },
       "actions": [
-        { "shape": "tank_adds", "params": { "add": "crypt guard", "boss": "anub'rekhan" }, "priority": 2 }
+        {
+          "shape": "tank_adds",
+          "params": {
+            "add": "crypt guard",
+            "boss": "anub'rekhan"
+          },
+          "priority": 2
+        }
       ]
     },
     {
       "_comment": "Ranged DPS and healers spread to avoid Impale, outside Locust Swarm.",
-      "trigger": { "shape": "encounter_active", "role": "ranged,healer", "boss_aura": "locust swarm", "aura_present": false },
+      "trigger": {
+        "shape": "encounter_active",
+        "role": "ranged,healer",
+        "boss_aura": "locust swarm",
+        "aura_present": false
+      },
       "actions": [
-        { "shape": "spread", "params": { "radius": 8.0 }, "priority": 2 }
+        {
+          "shape": "spread",
+          "params": {
+            "radius": 8.0
+          },
+          "priority": 2
+        }
       ]
     },
     {
       "_comment": "DPS clear the Crypt Guards and their Corpse Scarabs before the boss (a dying guard bursts into 10 scarabs); both must be named or ranged tunnel the boss and the swarm chews the casters. Outside Locust Swarm.",
-      "trigger": { "shape": "encounter_active", "role": "dps", "boss_aura": "locust swarm", "aura_present": false },
+      "trigger": {
+        "shape": "encounter_active",
+        "role": "dps",
+        "boss_aura": "locust swarm",
+        "aura_present": false
+      },
       "actions": [
-        { "shape": "attack", "params": { "targets": ["crypt guard", "corpse scarab"], "boss": "anub'rekhan" }, "priority": 1 }
+        {
+          "shape": "attack",
+          "params": {
+            "targets": [
+              "crypt guard",
+              "corpse scarab"
+            ],
+            "boss": "anub'rekhan"
+          },
+          "priority": 1
+        }
       ]
     }
   ]

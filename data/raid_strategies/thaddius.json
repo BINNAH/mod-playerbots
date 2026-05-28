@@ -5,108 +5,318 @@
   "rules": [
     {
       "_comment": "Pull: main tank climbs toward the live Stalagg (left platform). No attack -- C++ engages on arrival. `then` re-climbs to whichever add it lands on after a Magnetic Pull swap. boss:\"\" so the rule goes inert when the add dies.",
-      "trigger": { "shape": "manual_engage", "role": "maintank" },
+      "trigger": {
+        "shape": "manual_engage",
+        "role": "maintank"
+      },
       "actions": [
-        { "shape": "move_to_target", "params": { "target": "stalagg", "detect": "nearest", "boss": "", "distance": 3.0, "then": ["stalagg", "feugen"] }, "priority": 3 }
+        {
+          "shape": "move_to_target",
+          "params": {
+            "target": "stalagg",
+            "detect": "nearest",
+            "boss": "",
+            "distance": 3.0,
+            "then": [
+              "stalagg",
+              "feugen"
+            ]
+          },
+          "priority": 3
+        }
       ]
     },
     {
       "_comment": "Pull: off-tank climbs toward the live Feugen (right platform). No attack -- C++ engages on arrival. `then` gives it the same Magnetic Pull swap recovery as the main tank.",
-      "trigger": { "shape": "manual_engage", "role": "offtank" },
+      "trigger": {
+        "shape": "manual_engage",
+        "role": "offtank"
+      },
       "actions": [
-        { "shape": "move_to_target", "params": { "target": "feugen", "detect": "nearest", "boss": "", "distance": 3.0, "then": ["stalagg", "feugen"] }, "priority": 3 }
+        {
+          "shape": "move_to_target",
+          "params": {
+            "target": "feugen",
+            "detect": "nearest",
+            "boss": "",
+            "distance": 3.0,
+            "then": [
+              "stalagg",
+              "feugen"
+            ]
+          },
+          "priority": 3
+        }
       ]
     },
     {
       "_comment": "Pull: ranged DPS (ranged,!healer) climb toward Stalagg (left), stopping ~5y short, then hand off to the C++ ranged anchor.",
-      "trigger": { "shape": "manual_engage", "role": "ranged,!healer" },
+      "trigger": {
+        "shape": "manual_engage",
+        "role": "ranged,!healer"
+      },
       "actions": [
-        { "shape": "move_to_target", "params": { "target": "stalagg", "detect": "nearest", "boss": "", "distance": 5.0 }, "priority": 3 }
+        {
+          "shape": "move_to_target",
+          "params": {
+            "target": "stalagg",
+            "detect": "nearest",
+            "boss": "",
+            "distance": 5.0
+          },
+          "priority": 3
+        }
       ]
     },
     {
       "_comment": "Pull: first half of the healer bots climb to Stalagg (left) so the main-tank side is healed. split counts bots only (humans excluded). No attack -- climb then heal.",
-      "trigger": { "shape": "manual_engage", "role": "healer", "split": "1/2" },
+      "trigger": {
+        "shape": "manual_engage",
+        "role": "healer",
+        "split": "1/2"
+      },
       "actions": [
-        { "shape": "move_to_target", "params": { "target": "stalagg", "detect": "nearest", "boss": "", "distance": 5.0 }, "priority": 3 }
+        {
+          "shape": "move_to_target",
+          "params": {
+            "target": "stalagg",
+            "detect": "nearest",
+            "boss": "",
+            "distance": 5.0
+          },
+          "priority": 3
+        }
       ]
     },
     {
       "_comment": "Pull: second half of the healer bots climb to Feugen (right) so the off-tank side is healed.",
-      "trigger": { "shape": "manual_engage", "role": "healer", "split": "2/2" },
+      "trigger": {
+        "shape": "manual_engage",
+        "role": "healer",
+        "split": "2/2"
+      },
       "actions": [
-        { "shape": "move_to_target", "params": { "target": "feugen", "detect": "nearest", "boss": "", "distance": 5.0 }, "priority": 3 }
+        {
+          "shape": "move_to_target",
+          "params": {
+            "target": "feugen",
+            "detect": "nearest",
+            "boss": "",
+            "distance": 5.0
+          },
+          "priority": 3
+        }
       ]
     },
     {
       "_comment": "Pull: melee DPS climb toward Feugen (right). role melee,!tank,!healer so tanks/healers (also 'melee' since IsMelee == !IsRanged) don't match and ping-pong.",
-      "trigger": { "shape": "manual_engage", "role": "melee,!tank,!healer" },
+      "trigger": {
+        "shape": "manual_engage",
+        "role": "melee,!tank,!healer"
+      },
       "actions": [
-        { "shape": "move_to_target", "params": { "target": "feugen", "detect": "nearest", "boss": "", "distance": 3.0 }, "priority": 3 }
+        {
+          "shape": "move_to_target",
+          "params": {
+            "target": "feugen",
+            "detect": "nearest",
+            "boss": "",
+            "distance": 3.0
+          },
+          "priority": 3
+        }
       ]
     },
-
     {
       "_comment": "Add phase (Level-1): C++ splits bots by nearest add, holds tank/ranged anchors, handles Magnetic Pull swaps.",
-      "trigger": { "name": "thaddius phase pet" },
-      "actions": [ { "name": "thaddius attack nearest pet", "priority": 1 } ]
+      "trigger": {
+        "name": "thaddius phase pet"
+      },
+      "actions": [
+        {
+          "name": "thaddius attack nearest pet",
+          "priority": 1
+        }
+      ]
     },
     {
       "_comment": "Add phase: taunt when a tank loses its add to Magnetic Pull.",
-      "trigger": { "name": "thaddius phase pet lose aggro" },
-      "actions": [ { "name": "taunt spell", "priority": 2 } ]
+      "trigger": {
+        "name": "thaddius phase pet lose aggro"
+      },
+      "actions": [
+        {
+          "name": "taunt spell",
+          "priority": 2
+        }
+      ]
     },
     {
       "_comment": "Transition (both adds dead): C++ jump down from the add platforms (z312) to the low platform (z304).",
-      "trigger": { "name": "thaddius phase transition" },
-      "actions": [ { "name": "thaddius move to platform", "priority": 1 } ]
+      "trigger": {
+        "name": "thaddius phase transition"
+      },
+      "actions": [
+        {
+          "name": "thaddius move to platform",
+          "priority": 1
+        }
+      ]
     },
-
     {
       "_comment": "Thaddius phase polarity (Level-2): negative-charge melee stack at their left anchor; yields once parked so the rotation runs. self_aura gates on the Polarity Shift debuff. (The 3 rules below are the other charge/role anchors.)",
-      "trigger": { "shape": "encounter_active", "boss": "thaddius", "detect": "nearest", "role": "melee", "self_aura": "negative charge", "self_aura_present": true },
-      "actions": [ { "shape": "stack_point", "params": { "x": 3508.29, "y": -2920.12, "radius": 3.0 }, "priority": 3 } ]
+      "trigger": {
+        "shape": "encounter_active",
+        "boss": "thaddius",
+        "detect": "nearest",
+        "role": "melee",
+        "self_aura": "negative charge",
+        "self_aura_present": true
+      },
+      "actions": [
+        {
+          "shape": "stack_point",
+          "params": {
+            "x": 3508.29,
+            "y": -2920.12,
+            "radius": 3.0
+          },
+          "priority": 3
+        }
+      ]
     },
     {
-      "trigger": { "shape": "encounter_active", "boss": "thaddius", "detect": "nearest", "role": "ranged,healer", "self_aura": "negative charge", "self_aura_present": true },
-      "actions": [ { "shape": "stack_point", "params": { "x": 3501.72, "y": -2913.36, "radius": 3.0 }, "priority": 3 } ]
+      "trigger": {
+        "shape": "encounter_active",
+        "boss": "thaddius",
+        "detect": "nearest",
+        "role": "ranged,healer",
+        "self_aura": "negative charge",
+        "self_aura_present": true
+      },
+      "actions": [
+        {
+          "shape": "stack_point",
+          "params": {
+            "x": 3501.72,
+            "y": -2913.36,
+            "radius": 3.0
+          },
+          "priority": 3
+        }
+      ]
     },
     {
-      "trigger": { "shape": "encounter_active", "boss": "thaddius", "detect": "nearest", "role": "melee", "self_aura": "positive charge", "self_aura_present": true },
-      "actions": [ { "shape": "stack_point", "params": { "x": 3519.74, "y": -2931.69, "radius": 3.0 }, "priority": 3 } ]
+      "trigger": {
+        "shape": "encounter_active",
+        "boss": "thaddius",
+        "detect": "nearest",
+        "role": "melee",
+        "self_aura": "positive charge",
+        "self_aura_present": true
+      },
+      "actions": [
+        {
+          "shape": "stack_point",
+          "params": {
+            "x": 3519.74,
+            "y": -2931.69,
+            "radius": 3.0
+          },
+          "priority": 3
+        }
+      ]
     },
     {
-      "trigger": { "shape": "encounter_active", "boss": "thaddius", "detect": "nearest", "role": "ranged,healer", "self_aura": "positive charge", "self_aura_present": true },
-      "actions": [ { "shape": "stack_point", "params": { "x": 3524.32, "y": -2936.26, "radius": 3.0 }, "priority": 3 } ]
+      "trigger": {
+        "shape": "encounter_active",
+        "boss": "thaddius",
+        "detect": "nearest",
+        "role": "ranged,healer",
+        "self_aura": "positive charge",
+        "self_aura_present": true
+      },
+      "actions": [
+        {
+          "shape": "stack_point",
+          "params": {
+            "x": 3524.32,
+            "y": -2936.26,
+            "radius": 3.0
+          },
+          "priority": 3
+        }
+      ]
     }
   ],
-
   "suppress": [
     {
       "_comment": "Pull window: suppress follow + formation so the autonomous climb owns movement instead of bots being yanked back to the master.",
-      "trigger": { "shape": "manual_engage" },
-      "actions": ["follow", "combat formation move"]
+      "trigger": {
+        "shape": "manual_engage"
+      },
+      "actions": [
+        "follow",
+        "combat formation move"
+      ]
     },
     {
       "_comment": "Add phase: no formation / follow / generic assist while the C++ pet action owns positioning + targeting.",
-      "trigger": { "name": "thaddius phase pet" },
-      "actions": ["combat formation move", "follow", "dps assist", "tank assist"]
+      "trigger": {
+        "name": "thaddius phase pet"
+      },
+      "actions": [
+        "combat formation move",
+        "follow",
+        "dps assist",
+        "tank assist"
+      ]
     },
     {
       "_comment": "Add phase (after 5s): suppress all class taunts. Magnetic Pull transfers threat in the boss script, so re-taunts aren't needed and paladin taunts (Hand of Reckoning, Righteous Defense) steal across platforms. The 5s grace lets the opening pickup fire. Name the class actions, not just 'taunt spell' (which paladins/DKs alias).",
-      "trigger": { "name": "thaddius phase pet" },
+      "trigger": {
+        "name": "thaddius phase pet"
+      },
       "after_ms": 5000,
-      "actions": ["taunt", "taunt spell", "dark command", "hand of reckoning", "righteous defense", "growl"]
+      "actions": [
+        "taunt",
+        "taunt spell",
+        "dark command",
+        "hand of reckoning",
+        "righteous defense",
+        "growl"
+      ]
     },
     {
       "_comment": "Thaddius phase: suppress every non-rotation movement so nothing shoves bots off the polarity stack once stack_point parks and yields. 'dps assist' is left on so bots still DPS the boss between Polarity Shifts; auto-attacks are unaffected.",
-      "trigger": { "name": "thaddius phase thaddius" },
-      "actions": ["combat formation move", "follow", "set behind", "tank face", "reach melee", "reach spell", "autopilot move", "flee"]
+      "trigger": {
+        "name": "thaddius phase thaddius"
+      },
+      "actions": [
+        "combat formation move",
+        "follow",
+        "set behind",
+        "tank face",
+        "reach melee",
+        "reach spell",
+        "autopilot move",
+        "flee"
+      ]
     },
     {
       "_comment": "Death-sync: zero a bot's non-healing damage casts while its add is <=40% HP and the other is >=3% higher, so the two adds die within the ~5s revive window. Self-deactivates once the adds are dead.",
-      "trigger": { "shape": "target_hp_ahead", "others": ["feugen", "stalagg"], "margin": 3, "below": 40 },
-      "actions": ["@damage"]
+      "trigger": {
+        "shape": "target_hp_ahead",
+        "others": [
+          "feugen",
+          "stalagg"
+        ],
+        "margin": 3,
+        "below": 40
+      },
+      "actions": [
+        "@damage"
+      ]
     }
   ]
 }

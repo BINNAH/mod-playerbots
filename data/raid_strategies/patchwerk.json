@@ -4,16 +4,34 @@
   "rules": [
     {
       "_comment": "Hateful Strike soak: glue all tanks to the boss in melee so the two highest-HP bodies are the only eligible strike targets (never a squishy). No phases/adds/AoE; Frenzy + Berserk are unreactable wipe-timers. See BossNotes/Patchwerk.md.",
-      "trigger": { "shape": "encounter_active", "role": "tank" },
+      "trigger": {
+        "shape": "encounter_active",
+        "role": "tank"
+      },
       "actions": [
-        { "shape": "attack", "params": { "targets": "patchwerk" }, "priority": 1 }
+        {
+          "shape": "attack",
+          "params": {
+            "targets": "patchwerk"
+          },
+          "priority": 1
+        }
       ]
     },
     {
       "_comment": "Everyone else focuses the boss; ranged DPS stay at cast range, naturally outside the 5y Hateful Strike radius. Healers run their own heal strategy untouched. (C++ 'rear flank' + ranged-hold intentionally dropped: no Level-2 distance-hold, and 'rear flank' would pull casters into the 5y zone.)",
-      "trigger": { "shape": "encounter_active", "role": "dps" },
+      "trigger": {
+        "shape": "encounter_active",
+        "role": "dps"
+      },
       "actions": [
-        { "shape": "attack", "params": { "targets": "patchwerk" }, "priority": 1 }
+        {
+          "shape": "attack",
+          "params": {
+            "targets": "patchwerk"
+          },
+          "priority": 1
+        }
       ]
     }
   ]

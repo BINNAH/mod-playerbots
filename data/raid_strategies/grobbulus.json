@@ -5,50 +5,129 @@
   "rules": [
     {
       "_comment": "Main-tank kite: stepped orbit around room center, advancing one waypoint per ~15s (one drag per Poison Cloud) so the tank parks and refreshes threat between drags. (Drop 'interval' for a continuous kite.)",
-      "trigger": { "shape": "encounter_active", "boss": "grobbulus", "role": "maintank" },
+      "trigger": {
+        "shape": "encounter_active",
+        "boss": "grobbulus",
+        "role": "maintank"
+      },
       "actions": [
-        { "shape": "orbit_point", "params": { "x": 3281.23, "y": -3310.38, "radius": 35.0, "segments": 8, "clockwise": true, "interval": 15000 }, "priority": 3 }
+        {
+          "shape": "orbit_point",
+          "params": {
+            "x": 3281.23,
+            "y": -3310.38,
+            "radius": 35.0,
+            "segments": 8,
+            "clockwise": true,
+            "interval": 15000
+          },
+          "priority": 3
+        }
       ]
     },
     {
       "_comment": "Mutating Injection on a melee/tank (role melee,tank = !IsRanged): back off >=18y in any direction so the explosion cloud lands in open ground. only_if_closer yields once already out of range.",
-      "trigger": { "shape": "encounter_active", "boss": "grobbulus", "role": "melee,tank", "self_aura": "mutating injection", "self_aura_present": true },
+      "trigger": {
+        "shape": "encounter_active",
+        "boss": "grobbulus",
+        "role": "melee,tank",
+        "self_aura": "mutating injection",
+        "self_aura_present": true
+      },
       "actions": [
-        { "shape": "position_vs_boss", "params": { "anchor": "radial_out", "distance": 18.0, "only_if_closer": true }, "priority": 2 }
+        {
+          "shape": "position_vs_boss",
+          "params": {
+            "anchor": "radial_out",
+            "distance": 18.0,
+            "only_if_closer": true
+          },
+          "priority": 2
+        }
       ]
     },
     {
       "_comment": "Mutating Injection on a ranged/healer: run 24y behind the boss to drop the cloud away from the stack.",
-      "trigger": { "shape": "encounter_active", "boss": "grobbulus", "role": "ranged,healer", "self_aura": "mutating injection", "self_aura_present": true },
+      "trigger": {
+        "shape": "encounter_active",
+        "boss": "grobbulus",
+        "role": "ranged,healer",
+        "self_aura": "mutating injection",
+        "self_aura_present": true
+      },
       "actions": [
-        { "shape": "position_vs_boss", "params": { "anchor": "behind", "distance": 24.0, "angle_offset": 0.3927 }, "priority": 2 }
+        {
+          "shape": "position_vs_boss",
+          "params": {
+            "anchor": "behind",
+            "distance": 24.0,
+            "angle_offset": 0.3927
+          },
+          "priority": 2
+        }
       ]
     },
     {
       "_comment": "Ranged/healer without injection (the default ranged position): re-stack at room center; yields once within 5y so they DPS/heal.",
-      "trigger": { "shape": "encounter_active", "boss": "grobbulus", "role": "ranged,healer", "self_aura": "mutating injection", "self_aura_present": false },
+      "trigger": {
+        "shape": "encounter_active",
+        "boss": "grobbulus",
+        "role": "ranged,healer",
+        "self_aura": "mutating injection",
+        "self_aura_present": false
+      },
       "actions": [
-        { "shape": "stack_point", "params": { "x": 3281.23, "y": -3310.38, "radius": 5.0 }, "priority": 1 }
+        {
+          "shape": "stack_point",
+          "params": {
+            "x": 3281.23,
+            "y": -3310.38,
+            "radius": 5.0
+          },
+          "priority": 1
+        }
       ]
     },
     {
       "_comment": "Addition (not in the C++ strategy): off-tank herds Fallout Slimes (16290) onto the boss for cleave. Bot-only slot. DELETE for a pure 1:1 port.",
-      "trigger": { "shape": "encounter_active", "boss": "grobbulus", "role": "offtank" },
+      "trigger": {
+        "shape": "encounter_active",
+        "boss": "grobbulus",
+        "role": "offtank"
+      },
       "actions": [
-        { "shape": "tank_adds", "params": { "add": "fallout slime", "boss": "grobbulus" }, "priority": 2 }
+        {
+          "shape": "tank_adds",
+          "params": {
+            "add": "fallout slime",
+            "boss": "grobbulus"
+          },
+          "priority": 2
+        }
       ]
     }
   ],
   "suppress": [
     {
       "_comment": "GrobbulusMultiplier part 1: zero 'avoid aoe' for the main tank only, so it keeps dragging the boss through the Poison Clouds it kites (lets orbit_point @3 win the tick). 'reach melee' left alone so the tank stays in melee.",
-      "trigger": { "shape": "encounter_active", "boss": "grobbulus", "role": "maintank" },
-      "actions": ["avoid aoe"]
+      "trigger": {
+        "shape": "encounter_active",
+        "boss": "grobbulus",
+        "role": "maintank"
+      },
+      "actions": [
+        "avoid aoe"
+      ]
     },
     {
       "_comment": "GrobbulusMultiplier part 2: zero formation-follow for all bots while engaged (it would re-pull bots toward the master and fight the injection-spread / re-center movement).",
-      "trigger": { "shape": "encounter_active", "boss": "grobbulus" },
-      "actions": ["combat formation move"]
+      "trigger": {
+        "shape": "encounter_active",
+        "boss": "grobbulus"
+      },
+      "actions": [
+        "combat formation move"
+      ]
     }
   ]
 }

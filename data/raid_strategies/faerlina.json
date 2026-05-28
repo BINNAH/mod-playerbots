@@ -4,9 +4,15 @@
   "rules": [
     {
       "_comment": "While engaged, everyone dodges ground AoE. Faithful copy of C++ FaerlinaTrigger; the C++ encounter is a stub (no Rain of Fire / Frenzy / Widow's Embrace yet), so this is too.",
-      "trigger": { "shape": "encounter_active", "boss": "grand widow faerlina" },
+      "trigger": {
+        "shape": "encounter_active",
+        "boss": "grand widow faerlina"
+      },
       "actions": [
-        { "name": "avoid aoe", "priority": 1 }
+        {
+          "name": "avoid aoe",
+          "priority": 1
+        }
       ]
     }
   ]

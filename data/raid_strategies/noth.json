@@ -4,11 +4,34 @@
   "rules": [
     {
       "_comment": "Off-tank gathers the Plagued adds (warrior/champion/guardian) onto the tank to cleave. Trigger 'has attackers' fires in both phases, including the balcony phase where Noth is off-threat. One rule lists all three add names; whichever is up acts. See BossNotes/Noth.md.",
-      "trigger": { "name": "has attackers" },
+      "trigger": {
+        "name": "has attackers"
+      },
       "actions": [
-        { "shape": "tank_adds", "params": { "add": "plagued warrior",  "boss": "noth the plaguebringer" }, "priority": 2 },
-        { "shape": "tank_adds", "params": { "add": "plagued champion", "boss": "noth the plaguebringer" }, "priority": 2 },
-        { "shape": "tank_adds", "params": { "add": "plagued guardian", "boss": "noth the plaguebringer" }, "priority": 2 }
+        {
+          "shape": "tank_adds",
+          "params": {
+            "add": "plagued warrior",
+            "boss": "noth the plaguebringer"
+          },
+          "priority": 2
+        },
+        {
+          "shape": "tank_adds",
+          "params": {
+            "add": "plagued champion",
+            "boss": "noth the plaguebringer"
+          },
+          "priority": 2
+        },
+        {
+          "shape": "tank_adds",
+          "params": {
+            "add": "plagued guardian",
+            "boss": "noth the plaguebringer"
+          },
+          "priority": 2
+        }
       ]
     }
   ]

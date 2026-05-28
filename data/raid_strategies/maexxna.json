@@ -4,29 +4,79 @@
   "rules": [
     {
       "_comment": "Non-tanks fight from the rear flank and dodge ground AoE.",
-      "trigger": { "shape": "encounter_active", "role": "nontank", "boss": "maexxna" },
+      "trigger": {
+        "shape": "encounter_active",
+        "role": "nontank",
+        "boss": "maexxna"
+      },
       "actions": [
-        { "name": "rear flank", "priority": 1 },
-        { "name": "avoid aoe", "priority": 1 }
+        {
+          "name": "rear flank",
+          "priority": 1
+        },
+        {
+          "name": "avoid aoe",
+          "priority": 1
+        }
       ]
     },
     {
       "_comment": "DPS swap onto the off-threat Web Wrap cocoon (16486) on spawn to free the wrapped player, then back to the boss. detect:nearest because threat detection can't see an off-threat cocoon.",
-      "trigger": { "shape": "encounter_active", "role": "dps", "boss": "maexxna" },
+      "trigger": {
+        "shape": "encounter_active",
+        "role": "dps",
+        "boss": "maexxna"
+      },
       "actions": [
-        { "shape": "attack", "params": { "targets": 16486, "detect": "nearest", "boss": "maexxna" }, "priority": 2 }
+        {
+          "shape": "attack",
+          "params": {
+            "targets": 16486,
+            "detect": "nearest",
+            "boss": "maexxna"
+          },
+          "priority": 2
+        }
       ]
     },
     {
       "_comment": "Sub-30% Frenzy Web Spray (29484, raid-wide stun every 40s): pre-cast tank externals/defensives in the 4s window before it so they carry through the stun (healers are stunned too). Each cast self-gates to its class; require_aura:frenzy limits it to the lethal sprays.",
-      "trigger": { "shape": "pre_cast_window", "boss": "maexxna", "spell": 29484, "interval": 40000, "first_at": 40000, "lead": 4000, "tail": 6000, "require_aura": "frenzy", "role": "maintank,healer" },
+      "trigger": {
+        "shape": "pre_cast_window",
+        "boss": "maexxna",
+        "spell": 29484,
+        "interval": 40000,
+        "first_at": 40000,
+        "lead": 4000,
+        "tail": 6000,
+        "require_aura": "frenzy",
+        "role": "maintank,healer"
+      },
       "actions": [
-        { "name": "hand of sacrifice on main tank", "priority": 5 },
-        { "name": "guardian spirit on main tank", "priority": 5 },
-        { "name": "shield wall", "priority": 5 },
-        { "name": "icebound fortitude", "priority": 5 },
-        { "name": "survival instincts", "priority": 5 },
-        { "name": "divine protection", "priority": 5 }
+        {
+          "name": "hand of sacrifice on main tank",
+          "priority": 5
+        },
+        {
+          "name": "guardian spirit on main tank",
+          "priority": 5
+        },
+        {
+          "name": "shield wall",
+          "priority": 5
+        },
+        {
+          "name": "icebound fortitude",
+          "priority": 5
+        },
+        {
+          "name": "survival instincts",
+          "priority": 5
+        },
+        {
+          "name": "divine protection",
+          "priority": 5
+        }
       ]
     }
   ]

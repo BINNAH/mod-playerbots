@@ -5,46 +5,139 @@
   "rules": [
     {
       "_comment": "Fast dance (everyone): hold while parked (no cast, tight 4s cadence), cast instants while moving.",
-      "trigger": { "name": "heigan fast dance" },
+      "trigger": {
+        "name": "heigan fast dance"
+      },
       "actions": [
-        { "shape": "timed_safe_zone", "params": {
-            "zones": [[2756.0, -3704.0], [2762.3, -3684.6], [2775.5, -3674.4], [2794.9, -3668.1]],
+        {
+          "shape": "timed_safe_zone",
+          "params": {
+            "zones": [
+              [
+                2756.0,
+                -3704.0
+              ],
+              [
+                2762.3,
+                -3684.6
+              ],
+              [
+                2775.5,
+                -3674.4
+              ],
+              [
+                2794.9,
+                -3668.1
+              ]
+            ],
             "z": 276.54,
-            "pattern": [3, 2, 1, 0, 1, 2],
-            "first_at": 7000, "interval": 4000,
-            "hold": true, "cast_while_moving": true, "tolerance": 5.0 }, "priority": 32 }
+            "pattern": [
+              3,
+              2,
+              1,
+              0,
+              1,
+              2
+            ],
+            "first_at": 7000,
+            "interval": 4000,
+            "hold": true,
+            "cast_while_moving": true,
+            "tolerance": 5.0
+          },
+          "priority": 32
+        }
       ]
     },
     {
       "_comment": "Slow dance, ranged: yield once parked (cast freely in the 10s window), cast instants while moving between wedges.",
-      "trigger": { "name": "heigan slow dance ranged" },
+      "trigger": {
+        "name": "heigan slow dance ranged"
+      },
       "actions": [
-        { "shape": "timed_safe_zone", "params": {
-            "zones": [[2756.0, -3704.0], [2762.3, -3684.6], [2775.5, -3674.4], [2794.9, -3668.1]],
+        {
+          "shape": "timed_safe_zone",
+          "params": {
+            "zones": [
+              [
+                2756.0,
+                -3704.0
+              ],
+              [
+                2762.3,
+                -3684.6
+              ],
+              [
+                2775.5,
+                -3674.4
+              ],
+              [
+                2794.9,
+                -3668.1
+              ]
+            ],
             "z": 276.54,
-            "pattern": [3, 2, 1, 0, 1, 2],
-            "first_at": 15000, "interval": 10000,
-            "hold": false, "cast_while_moving": true, "tolerance": 5.0 }, "priority": 31 }
+            "pattern": [
+              3,
+              2,
+              1,
+              0,
+              1,
+              2
+            ],
+            "first_at": 15000,
+            "interval": 10000,
+            "hold": false,
+            "cast_while_moving": true,
+            "tolerance": 5.0
+          },
+          "priority": 31
+        }
       ]
     },
     {
       "_comment": "Slow dance, tank + melee: park on the SE platform. Kept as the C++ 'heigan platform' action for its Heigan-specific final-8s bleed-off timing.",
-      "trigger": { "name": "heigan slow dance platform" },
+      "trigger": {
+        "name": "heigan slow dance platform"
+      },
       "actions": [
-        { "name": "heigan platform", "priority": 31 }
+        {
+          "name": "heigan platform",
+          "priority": 31
+        }
       ]
     }
   ],
   "suppress": [
     {
       "_comment": "Fast phase: zero everything that would hijack a yielded dance tick (eruption-dodge / range-chase / formation / flee AND the C++ 'heigan dance'). 'reach melee' suppressed too, since Heigan stays targetable and a freed melee would chase him off the dance floor.",
-      "trigger": { "name": "heigan fast dance" },
-      "actions": ["avoid aoe", "reach spell", "reach melee", "combat formation move", "flee", "heigan dance"]
+      "trigger": {
+        "name": "heigan fast dance"
+      },
+      "actions": [
+        "avoid aoe",
+        "reach spell",
+        "reach melee",
+        "combat formation move",
+        "flee",
+        "heigan dance"
+      ]
     },
     {
       "_comment": "Slow phase: same suppression minus 'reach melee' (slow-phase melee need it to close on the platform). 'heigan platform' is left alone (the json platform rule uses it). Gated by aura-absence so it covers all roles.",
-      "trigger": { "shape": "encounter_active", "boss": "heigan the unclean", "boss_aura": "plague cloud", "aura_present": false },
-      "actions": ["avoid aoe", "reach spell", "combat formation move", "flee", "heigan dance"]
+      "trigger": {
+        "shape": "encounter_active",
+        "boss": "heigan the unclean",
+        "boss_aura": "plague cloud",
+        "aura_present": false
+      },
+      "actions": [
+        "avoid aoe",
+        "reach spell",
+        "combat formation move",
+        "flee",
+        "heigan dance"
+      ]
     }
   ]
 }

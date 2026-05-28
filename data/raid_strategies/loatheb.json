@@ -5,25 +5,69 @@
   "rules": [
     {
       "_comment": "Main tank holds Loatheb at the C++ tank spot and stays on the boss. Excluded from the Spore rule (pure tank = not dps), so it never wanders off and drops aggro.",
-      "trigger": { "shape": "encounter_active", "role": "maintank" },
+      "trigger": {
+        "shape": "encounter_active",
+        "role": "maintank"
+      },
       "actions": [
-        { "shape": "stack_point", "params": { "x": 2877.57, "y": -3967.00, "radius": 2.0 }, "priority": 3 },
-        { "shape": "attack", "params": { "targets": "loatheb" }, "priority": 1 }
+        {
+          "shape": "stack_point",
+          "params": {
+            "x": 2877.57,
+            "y": -3967.0,
+            "radius": 2.0
+          },
+          "priority": 3
+        },
+        {
+          "shape": "attack",
+          "params": {
+            "targets": "loatheb"
+          },
+          "priority": 1
+        }
       ]
     },
     {
       "_comment": "Ranged + healers stack at the C++ range spot and stay on the boss; ranged help on a Spore in range but never run across the room (the anchor wins movement). Healers heal via their base strategy.",
-      "trigger": { "shape": "encounter_active", "role": "ranged,healer" },
+      "trigger": {
+        "shape": "encounter_active",
+        "role": "ranged,healer"
+      },
       "actions": [
-        { "shape": "stack_point", "params": { "x": 2896.96, "y": -3980.61, "radius": 2.0 }, "priority": 3 },
-        { "shape": "attack", "params": { "targets": "loatheb" }, "priority": 1 }
+        {
+          "shape": "stack_point",
+          "params": {
+            "x": 2896.96,
+            "y": -3980.61,
+            "radius": 2.0
+          },
+          "priority": 3
+        },
+        {
+          "shape": "attack",
+          "params": {
+            "targets": "loatheb"
+          },
+          "priority": 1
+        }
       ]
     },
     {
       "_comment": "DPS burst each Spore add (16286) on spawn, then fall back to Loatheb (melee in the pile earn Fungal Bloom when it dies). Gated to dps so the tank is excluded.",
-      "trigger": { "shape": "encounter_active", "role": "dps" },
+      "trigger": {
+        "shape": "encounter_active",
+        "role": "dps"
+      },
       "actions": [
-        { "shape": "attack", "params": { "targets": 16286, "boss": "loatheb" }, "priority": 2 }
+        {
+          "shape": "attack",
+          "params": {
+            "targets": 16286,
+            "boss": "loatheb"
+          },
+          "priority": 2
+        }
       ]
     }
   ]
