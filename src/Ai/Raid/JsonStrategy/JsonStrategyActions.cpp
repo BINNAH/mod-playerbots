@@ -352,6 +352,161 @@ bool JsonAttackAction::Execute(Event /*event*/)
 }
 
 // ---------------------------------------------------------------------------
+// move_to_target
+// ---------------------------------------------------------------------------
+void JsonMoveToTargetAction::Qualify(std::string const qual)
+{
+    Qualified::Qualify(qual);
+    _targetsCsv = JsonKv(qual, "target");
+    _boss = JsonKv(qual, "boss");
+    // Default detect = nearest (proximity scan): the point of this shape is to run
+    // to something the bot does NOT threaten yet (the pull), where a threat scan
+    // would find nothing. "threat" is opt-in for the in-combat "close on my add".
+    _nearestDetect = (JsonKv(qual, "detect", "nearest") != "threat");
+    _distance = (float)std::atof(JsonKv(qual, "distance", "0").c_str());
+    _thenCsv = JsonKv(qual, "then");
+    _lastLogMs = 0;
+    _reached = false;
+    _everReached = false;
+    _valid = !(_targetsCsv.empty() && _boss.empty());
+}
+
+bool JsonMoveToTargetAction::Execute(Event /*event*/)
+{
+    if (!_valid)
+        return false;
+
+    // Pick the NEAREST live creature matching `target`. The candidate source is a
+    // proximity scan by default so it sees off-threat adds (the pull); falls back
+    // to the boss by name when no named target is alive.
+    // After the bot has engaged once (_everReached), a rule with a `then` set re-paths
+    // to the NEAREST of that set instead of the original named `target` -- so a tank
+    // thrown to the other platform by Magnetic Pull climbs to the add it landed on, not
+    // back to its original. Before the first reach, `target` drives the climb so the
+    // initial MT/OT split holds.
+    std::string const& activeCsv = (_everReached && !_thenCsv.empty()) ? _thenCsv : _targetsCsv;
+    Unit* target = nullptr;
+    if (!activeCsv.empty())
+    {
+        std::vector<std::string> tokens = JsonSplit(activeCsv, ',');
+        GuidVector candidates = _nearestDetect ? AI_VALUE(GuidVector, "nearest npcs")
+                                               : AI_VALUE(GuidVector, "attackers");
+        float bestDist = 0.0f;
+        for (ObjectGuid const& guid : candidates)
+        {
+            Unit* unit = botAI->GetUnit(guid);
+            if (!unit || !unit->IsAlive())
+                continue;
+            bool match = false;
+            for (std::string const& token : tokens)
+                if (MatchesNameOrEntry(botAI, unit, token))
+                {
+                    match = true;
+                    break;
+                }
+            if (!match)
+                continue;
+            float d = bot->GetExactDist(unit);
+            if (!target || d < bestDist)
+            {
+                target = unit;
+                bestDist = d;
+            }
+        }
+    }
+    if (!target && !_boss.empty())
+        target = AI_VALUE2(Unit*, "find target", _boss);
+
+    if (!target)
+        return false;
+
+    float dist3d = bot->GetExactDist(target);
+
+    // Climb-then-hand-off LATCH (per-bot). This action's only job is to CLIMB the bot
+    // up to its add; once it has REACHED the add, the proven in-combat C++ owns
+    // positioning from there (parks ranged at the anchor, swaps tanks on Magnetic
+    // Pull). Driving past that point dragged healers off the anchor chasing the
+    // moving add, and hauled a tank back to its original add after a swap. We latch
+    // on REACHING -- NOT on "in combat": a bot flagged in combat early (an off-tank
+    // taunting, or anyone caught by Static Field AoE while still on the ramp) must
+    // keep climbing, not hand off to the C++ -- whose MoveTo can't climb -- and get
+    // stuck at the bottom (the Magicguyman case). Re-arm only when plainly reset:
+    // out of combat AND far from the add (a wipe / fresh pull), so the latch persists
+    // through the whole engagement, including a Magnetic Pull that legitimately
+    // throws a tank far from its NAMED add (it then tanks the nearest add via C++).
+    if (!bot->IsInCombat() && dist3d > _distance + 10.0f)
+    {
+        // Genuine reset (wipe / fresh pull): out of combat AND far. Clear BOTH latches
+        // so the next pull re-climbs to the named `target` and re-establishes the split.
+        _reached = false;
+        _everReached = false;
+    }
+    else if (_reached && !_thenCsv.empty() && dist3d > _distance + 40.0f)
+    {
+        // SWAP RECOVERY (in combat): a Magnetic Pull flung this tank far off its add
+        // (e.g. z~338, 80y away). The in-combat C++ MoveTo can't climb back, so re-arm
+        // the per-tick latch to drive a fresh exact_waypoint climb to the (now nearest,
+        // via `then`) add. _everReached stays set, so it heads to the add it was thrown
+        // onto, not the original. 40 > any normal melee jitter, so steady tanking (dist
+        // ~6) never trips it -- only a real fling does.
+        _reached = false;
+    }
+    if (dist3d <= _distance + 0.5f)
+    {
+        _reached = true;
+        _everReached = true;
+    }
+
+    // Debug instrumentation, throttled to ~1/s per bot. Watch the climb: the bot's Z
+    // should rise toward the target's Z; reached=1 means handed off to the C++.
+    uint32 now = getMSTime();
+    bool logTick = (now - _lastLogMs > 1000);
+    if (logTick)
+    {
+        _lastLogMs = now;
+        LOG_INFO("playerbots",
+                 "[RaidJson][move_to_target] {} -> {} (entry {}): bot=({:.1f},{:.1f},{:.1f}) "
+                 "target=({:.1f},{:.1f},{:.1f}) dist={:.1f} stopAt={:.1f} reached={} combat={}",
+                 bot->GetName(), target->GetName(), target->GetEntry(),
+                 bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+                 target->GetPositionX(), target->GetPositionY(), target->GetPositionZ(),
+                 dist3d, _distance, _reached ? 1 : 0, bot->IsInCombat() ? 1 : 0);
+    }
+
+    // Reached the add -> hand off: yield every tick so the in-combat C++ owns it.
+    if (_reached)
+        return false;
+
+    // Path to the unit's ACTUAL position with exact_waypoint=TRUE. This is the
+    // crux: the default flags route MoveTo through SearchForBestPath, which DROPS
+    // the destination Z and re-snaps to the SHORTEST-path surface -- from the floor
+    // that's the slime directly under an elevated platform, so the bot walks across
+    // the hazard to the spot UNDER the add and never climbs (CONFIRMED in the log:
+    // bots reached the add's x,y but stayed at z~292 while the add sat at z~312).
+    // exact_waypoint skips that snap and keeps the add's literal Z, so recast routes
+    // up the ramp to the platform poly. generatePath stays on, so it's still a real
+    // navmesh path (no straight-line clip). We aim at the unit's exact spot (not the
+    // Unit-overload's stop-short point, which would land mid-air short of the ledge)
+    // and rely on the distance yield above to stop once on top.
+    bool issued = MoveTo(bot->GetMapId(),
+                         target->GetPositionX(), target->GetPositionY(), target->GetPositionZ(),
+                         false, false, false, /*exact_waypoint=*/true,
+                         MovementPriority::MOVEMENT_COMBAT);
+    if (!issued && logTick)
+        LOG_INFO("playerbots",
+                 "[RaidJson][move_to_target] {} MoveTo({}) issued no fresh spline (dist={:.1f}) "
+                 "-- throttled/duplicate; HOLDING tick to stay on the climb",
+                 bot->GetName(), target->GetName(), dist3d);
+    // HOLD the tick while still en route (we're past `distance`), even when this
+    // call issued no fresh spline. A throttled/duplicate MoveTo returns false but the
+    // bot is already mid-path; if we yielded here, a lower-priority action (autopilot
+    // move / idle drink-and-loot / formation) would grab the tick and drag the bot
+    // off the ramp -- the up/down oscillation seen in the logs (movetotarget FAILED
+    // 7427x vs OK 205x). Owning the tick until arrival keeps the climb monotonic.
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // snare_area
 // ---------------------------------------------------------------------------
 void JsonSnareAreaAction::Qualify(std::string const qual)

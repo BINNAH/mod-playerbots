@@ -1,7 +1,7 @@
 {
   "name": "gluth",
   "boss": "gluth",
-  "_comment": "FULLY LEVEL-2 Gluth (A3). TANK PLAN: the MAIN tank and ONE dedicated swap tank (offtank1 = first assist tank) ping-pong Gluth on Mortal Wound via tank_swap watch:victim, stacks:3 -- each holds + goes ham while it's the active tank and TAUNTS when the other hits 3 stacks; the off one stands ready and does NOT attack Gluth (no pull-aggro). EXTRA tanks (offtank2, offtank3) tank the Zombie Chow at the back (spawn area 3280,-3160): they actively melee the nearest chow (attack) AND AoE-threat the pile (snare_area), and kite the ring if >=6 swarm them. KITERS (mages+hunters) orbit the spawn area and snare the chow (esp. the ones leaking toward Gluth), bringing the pile to the chow-OTs; their pets are disabled (pet attack suppressed) so they don't scatter the chow. Everyone else burns Gluth + bursts the decimated chow during the Decimate window (attack max_hp_pct). Coords + spell lists + the stacks threshold are RELOAD-tunable. NOTE: if you only field one OT it becomes the swap tank and chow lean on the kiters + raid AoE -- add a 2nd/3rd tank for real chow tanking. A/B with .rjson off.",
+  "_comment": "FULLY LEVEL-2 Gluth (A3). CHOW LAYOUT (25-man, 3 spawn gates from boss_gluth.cpp zombiePos[0..2]): CENTER (3267.9,-3172.1), LEFT (3253.2,-3132.3), RIGHT (3308.3,-3185.8). KITERS are SPLIT one per side -- the MAGE kiter(s) orbit+snare the LEFT gate, the HUNTER kiter(s) orbit+snare the RIGHT gate (class is the only data split lever; there is no ranged-index role token). CHOW TANKS (offtank2,offtank3) sit on the CENTER gate, AoE-threat the center pile, and pick up the LEFT/RIGHT leakers via attack-nearest (no range cap, so they chase whichever chow is closest), kiting the center ring if >=6 swarm them. TANK PLAN unchanged: MAIN tank + ONE swap tank (offtank1) ping-pong Gluth on Mortal Wound via tank_swap watch:victim, stacks:3. DECIMATE BURN: a SINGLE role:dps rule (melee+ranged DPS, NOT healers/tanks -- IsDps excludes both) bursts the 5% chow; max_range:40 + sticky keep the lock stable as the chow SPRINT in (the old split 10y/35y rules thrashed: ranged DPS matched both at the same priority, and the tight 10y filter dropped a sprinting chow out of the candidate set every tick -> flip back to Gluth). Coords + spell lists + the stacks threshold are RELOAD-tunable. If your two kiters are the SAME class, the left/right class split can't separate them (no ranged index) -- say so and we'll rethink. A/B with .rjson off.",
   "rules": [
     {
       "_comment": "MAIN TANK: ping-pong Gluth with the swap tank. tank_swap@5 (watch:victim) -- while I'm the active tank it holds Gluth and yields to my rotation (go ham); when the OTHER tank (the swap-OT) is the victim and hits 3 Mortal Wound stacks I taunt Gluth back; while waiting (the MT yields) my own rules tank normally. stack_point@2 keeps Gluth pinned at the NE anchor (walks there, then yields so the rotation/attack fire); attack@1 engages Gluth on the pull and re-acquires after a taunt. detect:nearest so the gate works the moment I've been taunted off.",
@@ -20,11 +20,19 @@
       ]
     },
     {
-      "_comment": "KITERS (mages + hunters): orbit the chow spawn area (3280,-3160, r15) and snare the nearest chow within 35y -- slowing/rooting their march on Gluth and pulling them toward the chow-OTs at center. class:\"mage,hunter\" + detect:nearest (they never threaten Gluth). snare_area@7 fires the first known + off-CD snare, then yields to orbit_point@6. Pets are disabled below so they don't scatter the chow / pull Gluth. Full-time -- no Gluth DPS from them.",
-      "trigger": { "shape": "encounter_active", "role": "ranged", "class": "mage,hunter", "detect": "nearest" },
+      "_comment": "LEFT KITER (mages): orbit the LEFT chow gate (3253.2,-3132.3, r12) and snare the nearest chow within 35y, slowing their march on Gluth. class:\"mage\" + detect:nearest (kiters never threaten Gluth). snare_area@7 fires the first known + off-CD snare (mage spells apply; the hunter entries are skipped), then yields to orbit_point@6. Pets n/a for mages; pet attack is suppressed below regardless. Full-time -- no Gluth DPS from kiters.",
+      "trigger": { "shape": "encounter_active", "role": "ranged", "class": "mage", "detect": "nearest" },
       "actions": [
         { "shape": "snare_area", "params": { "spells": ["Cone of Cold", "Frost Nova", "Concussive Shot", "Frost Trap", "Multi-Shot"], "add": "zombie chow", "target": "nearest", "range": 35.0 }, "priority": 7 },
-        { "shape": "orbit_point", "params": { "x": 3280.0, "y": -3160.0, "radius": 15.0, "segments": 12, "clockwise": true }, "priority": 6 }
+        { "shape": "orbit_point", "params": { "x": 3253.2, "y": -3132.3, "radius": 12.0, "segments": 12, "clockwise": true }, "priority": 6 }
+      ]
+    },
+    {
+      "_comment": "RIGHT KITER (hunters): orbit the RIGHT chow gate (3308.3,-3185.8, r12) and snare the nearest chow within 35y. class:\"hunter\" + detect:nearest. Same snare list (hunter spells apply; mage entries skipped). Pets disabled below (pet attack suppressed) so they don't scatter the chow / peel one toward Gluth.",
+      "trigger": { "shape": "encounter_active", "role": "ranged", "class": "hunter", "detect": "nearest" },
+      "actions": [
+        { "shape": "snare_area", "params": { "spells": ["Cone of Cold", "Frost Nova", "Concussive Shot", "Frost Trap", "Multi-Shot"], "add": "zombie chow", "target": "nearest", "range": 35.0 }, "priority": 7 },
+        { "shape": "orbit_point", "params": { "x": 3308.3, "y": -3185.8, "radius": 12.0, "segments": 12, "clockwise": true }, "priority": 6 }
       ]
     },
     {
@@ -42,33 +50,26 @@
       ]
     },
     {
-      "_comment": "DECIMATE-BURN PIVOT, melee reach (max_hp_pct:10 self-gates to the burn; boss:\"\" = no fallback so they stay on Gluth otherwise; max_range:10 keeps melee from chasing).",
+      "_comment": "DECIMATE BURN -- ONE rule for ALL DPS (melee + ranged; role:dps excludes healers AND tanks so they keep their jobs while everyone is at 5%). max_hp_pct:10 self-gates to the post-Decimate window (chow are only candidates while at 5%, else this yields and DPS tunnel Gluth via the @1 rule above). boss:\"\" = no fallback so it never pulls a DPS onto Gluth from here. STABILITY FIX for the target thrash: detect:nearest+select:nearest+sticky:true picks one chow and HOLDS it to death, and max_range:40 (not 10) is wide enough that a chow SPRINTING in doesn't drop out of the candidate set every tick (which was reverting bots to Gluth and back). 40y also keeps melee from chasing across the whole room. Single rule => no same-priority double-attack (a ranged DPS used to match both the melee@10 and ranged@35 burn rules at prio 3 and flip between them).",
       "trigger": { "shape": "encounter_active", "role": "dps" },
       "actions": [
-        { "shape": "attack", "params": { "targets": "zombie chow", "boss": "", "detect": "nearest", "select": "nearest", "max_hp_pct": 10, "max_range": 10 }, "priority": 3 }
+        { "shape": "attack", "params": { "targets": "zombie chow", "boss": "", "detect": "nearest", "select": "nearest", "sticky": true, "max_hp_pct": 10, "max_range": 40 }, "priority": 3 }
       ]
     },
     {
-      "_comment": "DECIMATE-BURN PIVOT, ranged reach (max_range:35). Non-kiter ranged catch decimated chow crossing the room.",
-      "trigger": { "shape": "encounter_active", "role": "ranged" },
-      "actions": [
-        { "shape": "attack", "params": { "targets": "zombie chow", "boss": "", "detect": "nearest", "select": "nearest", "max_hp_pct": 10, "max_range": 35 }, "priority": 3 }
-      ]
-    },
-    {
-      "_comment": "CHOW TANKS (offtank2, offtank3 = 2nd/3rd assist tanks): actively tank the chow at the back. snare_area@3 AoE-threats the nearest chow within 12y (this is what pulls chow off their march to Gluth); attack@2 keeps the OT meleeing the nearest chow (sustained threat + auto-attack -- the fix for the chow tank standing around doing nothing); stack_point hold:true @1 parks them at the spawn area and owns the tick when there are no chow yet so they don't run at Gluth. detect:nearest (they never threaten Gluth). boss:\"\" on attack so it never falls back to hitting Gluth.",
+      "_comment": "CHOW TANKS (offtank2, offtank3 = 2nd/3rd assist tanks): sit on the CENTER gate and pick up center + LEFT/RIGHT leakers. snare_area@3 AoE-threats the nearest chow within 12y (pulls the local pile off their march to Gluth); attack@2 keeps the OT meleeing the NEAREST chow with NO range cap, so it chases out to grab the left/right chow the kiters slowed -- this is the 'pick up the left and right ones as well' bit; stack_point hold:true @1 parks them on the CENTER gate (3267.9,-3172.1) and owns the tick when there are no chow yet so they don't run at Gluth. detect:nearest (they never threaten Gluth). boss:\"\" on attack so it never falls back to hitting Gluth.",
       "trigger": { "shape": "encounter_active", "role": "offtank2,offtank3", "detect": "nearest" },
       "actions": [
         { "shape": "snare_area", "params": { "spells": ["Consecration", "Hammer of the Righteous", "Avenger's Shield", "Holy Wrath", "Thunder Clap", "Shockwave", "Cleave", "Death and Decay", "Blood Boil", "Pestilence", "Swipe", "Maul", "Challenging Roar"], "add": "zombie chow", "target": "nearest", "range": 12.0 }, "priority": 3 },
         { "shape": "attack", "params": { "targets": "zombie chow", "boss": "", "detect": "nearest", "select": "nearest" }, "priority": 2 },
-        { "shape": "stack_point", "params": { "x": 3280.0, "y": -3160.0, "radius": 5.0, "hold": true }, "priority": 1 }
+        { "shape": "stack_point", "params": { "x": 3267.9, "y": -3172.1, "radius": 5.0, "hold": true }, "priority": 1 }
       ]
     },
     {
-      "_comment": "CHOW TANK KITES when swarmed: if >=6 chow pile within 9y of a chow tank, orbit the spawn ring (3280,-3160, r18) so it isn't bursted down. orbit_point@4 beats the snare/attack/hold while active.",
+      "_comment": "CHOW TANK KITES when swarmed: if >=6 chow pile within 9y of a chow tank, orbit the CENTER gate ring (3267.9,-3172.1, r18) so it isn't bursted down. orbit_point@4 beats the snare/attack/hold while active.",
       "trigger": { "shape": "adds_near", "add": "zombie chow", "range": 9.0, "count": 6, "of": "self", "role": "offtank2,offtank3" },
       "actions": [
-        { "shape": "orbit_point", "params": { "x": 3280.0, "y": -3160.0, "radius": 18.0, "segments": 16, "clockwise": true }, "priority": 4 }
+        { "shape": "orbit_point", "params": { "x": 3267.9, "y": -3172.1, "radius": 18.0, "segments": 16, "clockwise": true }, "priority": 4 }
       ]
     }
   ],

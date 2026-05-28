@@ -173,6 +173,71 @@ private:
     float _maxRange = 0.0f;       // 0 = no filter; else only targets within this distance
 };
 
+// Shape "move_to_target": path to a live named creature's ACTUAL position (not a
+// fixed point) using an EXACT-waypoint MoveTo -- the generic "run to the add / boss"
+// movement primitive, and the reliable way to climb onto an ELEVATED platform. The
+// trap: the default MoveTo flags route through SearchForBestPath, which DROPS the
+// destination Z and re-snaps to whatever surface gives the SHORTEST navmesh path --
+// from the floor that's the hazard directly UNDER the platform, so the bot walks
+// across it to the spot below the add and NEVER climbs (the Thaddius pull bug, the
+// same one that made stack_point's `z` useless; logs showed bots reaching the add's
+// x,y but stuck at z~292 while the add sat at z~312, then dragging the add down once
+// they aggroed). Passing exact_waypoint=true keeps the unit's literal Z, so recast
+// routes up the ramp to the platform poly (generatePath stays on -> a real navmesh
+// path, no straight-line clip). We target the unit's exact spot, not a stop-short
+// point (which would land mid-air short of the ledge), and stop via the `distance`
+// yield. Same intent as the in-combat C++ ThaddiusAttackNearestPetAction, but it
+// only works there because the bots are ALREADY up at z~312 -- nothing solved the
+// cold climb from the floor before this.
+//   target   : creature name(s) / entry id(s) to approach (comma-list; the NEAREST
+//              live match wins). Falls back to `boss` when none are alive.
+//   detect   : how to locate it. "nearest" (DEFAULT here, unlike attack) = a
+//              proximity scan, so it works BEFORE the bot threatens anything (the
+//              `.rjson pull` case); "threat" = the attacker list (only what the bot
+//              already fights).
+//   distance : stop this many yards short of the unit (0 = run to contact). Yields
+//              once within distance so a lower-priority attack / rotation rule runs.
+//   boss     : fallback creature name (default file `boss`).
+//   then     : SWAP-RECOVERY target set (comma-list). Empty (default) = the latch is
+//              permanent in combat (climb once, then hand off forever -- right for
+//              healers/ranged and a fixed-add tank). When set, two things change for
+//              this rule: (1) after the bot has reached its add ONCE, the target it
+//              re-paths to becomes the NEAREST of `then` (not the named `target`), so
+//              a Thaddius tank thrown to the OTHER platform by Magnetic Pull goes to
+//              the add it was thrown ONTO, not back to its original; (2) the reached-
+//              latch RE-ARMS even in combat when the bot is flung far (> distance+40)
+//              from that add, so it RE-CLIMBS via exact_waypoint -- the in-combat C++
+//              MoveTo can't climb, so without this the swapped tank is stranded off
+//              the platform (seen at z~338 above Stalagg), out of taunt range, and the
+//              add runs to whoever still has threat. `target` still drives the FIRST
+//              climb so the initial MT/OT split is preserved; `then` only takes over
+//              after that first reach, and both reset on a genuine wipe (out of combat
+//              + far). Typical: target="stalagg", then="stalagg,feugen".
+// Emits a throttled (~1/s per bot) "[RaidJson][move_to_target]" debug line so the
+// climb is visible in Playerbots.log (bot Z should rise toward the target's Z).
+// Qualifier: "target=<...>|detect=<nearest|threat>|distance=<y>|boss=<name>|then=<...>".
+class JsonMoveToTargetAction : public MovementAction, public Qualified
+{
+public:
+    JsonMoveToTargetAction(PlayerbotAI* ai) : MovementAction(ai, "json movetotarget") {}
+
+    void Qualify(std::string const qual) override;
+    bool Execute(Event event) override;
+    bool isUseful() override { return _valid; }
+    std::string const getName() override { return "json movetotarget::" + qualifier; }
+
+private:
+    std::string _targetsCsv;
+    std::string _boss;
+    bool _nearestDetect = true;  // default proximity scan (works pre-threat, the pull)
+    float _distance = 0.0f;
+    bool _valid = false;
+    bool _reached = false;       // per-bot latch: reached the add once -> hand off to C++
+    bool _everReached = false;   // sticky: reached at least once this engagement (swap recovery)
+    std::string _thenCsv;        // swap-recovery target set; empty = no recovery (latch permanent)
+    uint32 _lastLogMs = 0;       // per-bot throttle for the debug log
+};
+
 // Shape "snare_area": cast a control / AoE-threat spell on adds while a separate
 // lower-priority shape (orbit_point / stack_point) holds the movement. Tries each
 // spell in the list the bot KNOWS and has off cooldown, in order, casting the

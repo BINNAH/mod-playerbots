@@ -26,8 +26,10 @@ class Trigger;
 class JsonSuppressMultiplier : public Multiplier
 {
 public:
-    JsonSuppressMultiplier(PlayerbotAI* ai, std::string triggerName, std::set<std::string> names)
-        : Multiplier(ai, "json suppress"), _triggerName(std::move(triggerName)), _names(std::move(names))
+    JsonSuppressMultiplier(PlayerbotAI* ai, std::string triggerName, std::set<std::string> names,
+                           uint32 minAgeMs = 0)
+        : Multiplier(ai, "json suppress"), _triggerName(std::move(triggerName)),
+          _names(std::move(names)), _minAgeMs(minAgeMs)
     {
     }
 
@@ -38,6 +40,8 @@ private:
     std::set<std::string> _names;
     Trigger* _trigger = nullptr;
     bool _resolved = false;
+    uint32 _minAgeMs = 0;       // grace window: don't suppress until trigger active this long
+    uint32 _activeSince = 0;    // ms timestamp when trigger first went active in current run (0 = not active)
 };
 
 class JsonRaidStrategy : public Strategy

@@ -74,6 +74,13 @@ struct JsonResolvedSuppress
 {
     std::string trigger;
     std::set<std::string> names;
+    // Optional grace window: suppression activates only once `trigger` has been
+    // continuously active for >= this many ms. 0 = no grace (existing behavior).
+    // Use case: an opening-window-tolerant suppress -- e.g. Thaddius "no taunts
+    // after the first 5s" allows the initial tank pickup, then disables in-fight
+    // taunts so a paladin's 30/40-yard taunt can't steal a swap target across
+    // platforms.
+    uint32 minAgeMs = 0;
 };
 
 class RaidJsonRuleSet

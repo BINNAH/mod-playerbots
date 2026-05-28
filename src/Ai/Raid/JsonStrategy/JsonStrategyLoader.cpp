@@ -251,6 +251,15 @@ static bool ResolveTrigger(json const& t, std::string const& fileBoss,
         out = "json hpahead::" + q;
         return true;
     }
+    if (shape == "target_victim")
+    {
+        // role: the victim role to match (default "tank"). Fires while the bot's
+        // current target is being hit by a BOT of that role -- used in suppress to
+        // stop tanks taunting an add another tank already holds.
+        std::string role = t.value("role", std::string("tank"));
+        out = "json targetvictim::role=" + role;
+        return true;
+    }
     if (shape == "manual_engage")
     {
         // Both optional: `add` (name/entry) gates on that add being alive nearby
@@ -272,6 +281,11 @@ static bool ResolveTrigger(json const& t, std::string const& fileBoss,
             std::snprintf(rbuf, sizeof(rbuf), "%srange=%.4f", q.empty() ? "" : "|", range);
             q += rbuf;
         }
+        // Optional "i/n": split the bots matching `role` into n groups and fire only
+        // for the i-th -- sends one role to two adds (e.g. healers half-left/half-right).
+        std::string split = t.value("split", std::string());
+        if (!split.empty())
+            q += (q.empty() ? "" : "|") + std::string("split=") + split;
         out = "json engage::" + q;
         return true;
     }
@@ -491,6 +505,58 @@ void RaidJsonRuleSet::Load()
                             q += "|sticky=0";
                         act.name = "json attackpick::" + q;
                     }
+                    else if (shape == "move_to_target")
+                    {
+                        // params.target: a name ("stalagg"), an entry id, or an
+                        // array. The nearest live match is approached; falls back
+                        // to `boss` when none are alive.
+                        auto buildSet = [](json const& node) -> std::string
+                        {
+                            std::string out;
+                            auto appendToken = [&out](json const& el)
+                            {
+                                if (!out.empty())
+                                    out += ",";
+                                out += el.is_number_integer() ? std::to_string(el.get<int>())
+                                                              : el.get<std::string>();
+                            };
+                            if (node.is_array())
+                                for (auto const& el : node)
+                                    appendToken(el);
+                            else
+                                appendToken(node);
+                            return out;
+                        };
+                        std::string targets = p.contains("target") ? buildSet(p["target"]) : "";
+                        // Optional swap-recovery set: after the bot first reaches its add,
+                        // it re-paths to the NEAREST of `then` (Thaddius tank Magnetic-Pull
+                        // swap). Empty = latch stays permanent in combat (old behavior).
+                        std::string thenSet = p.contains("then") ? buildSet(p["then"]) : "";
+                        std::string boss = p.value("boss", fileBoss);
+                        if (targets.empty() && boss.empty())
+                        {
+                            errors.push_back(fname + ": move_to_target needs params.target and/or a boss");
+                            continue;
+                        }
+                        // detect DEFAULTS to nearest here (a proximity scan), unlike
+                        // attack -- the point is to path to something the bot does
+                        // not threaten yet (the `.rjson pull`).
+                        std::string detect = p.value("detect", std::string("nearest"));
+                        if (detect != "threat" && detect != "nearest")
+                        {
+                            errors.push_back(fname + ": move_to_target params.detect must be 'threat' or 'nearest'");
+                            continue;
+                        }
+                        float distance = p.value("distance", 0.0f);
+                        char buf[48];
+                        std::snprintf(buf, sizeof(buf), "|distance=%.4f", distance);
+                        std::string q = "target=" + targets + "|detect=" + detect + buf;
+                        if (!boss.empty())
+                            q += "|boss=" + boss;
+                        if (!thenSet.empty())
+                            q += "|then=" + thenSet;
+                        act.name = "json movetotarget::" + q;
+                    }
                     else if (shape == "snare_area")
                     {
                         // spells: ordered array of spell names; each bot fires the
@@ -693,6 +759,12 @@ void RaidJsonRuleSet::Load()
                 for (auto const& a : sJson["actions"])
                     if (a.is_string())
                         sup.names.insert(a.get<std::string>());
+                // Optional grace window: skip suppression until the trigger has been
+                // continuously active for this long. Accepts `after_ms` (preferred,
+                // exact) or `after_seconds` (convenience).
+                sup.minAgeMs = sJson.value("after_ms", 0u);
+                if (sup.minAgeMs == 0 && sJson.contains("after_seconds"))
+                    sup.minAgeMs = sJson.value("after_seconds", 0u) * 1000u;
                 if (!sup.names.empty())
                     suppress.push_back(std::move(sup));
             }

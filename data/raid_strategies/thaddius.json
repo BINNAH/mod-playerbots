@@ -1,26 +1,49 @@
 {
   "name": "thaddius",
   "boss": "thaddius",
-  "_comment": "WORKFLOW: `.rjson on` to arm, then walk your raid UP the ramps and past both platforms (the bots FOLLOW you up — that's the only reliable way up; they can't path the long low->high climb on their own). Then `.rjson pull`: each bot that you've led within range of an add breaks off and engages it — MAIN TANK on Stalagg, OFF-TANK on Feugen, everyone else on the nearest add. The instant combat starts the PROVEN C++ actions take over (ThaddiusAttackNearestPetAction for on-platform positioning + Magnetic Pull swaps; ThaddiusMoveToPlatformAction for the z312->z304 transition jump). Polarity is Level-2; add death-sync is the generic target_hp_ahead + @damage suppress.",
+  "_comment": "WORKFLOW: `.rjson on` to arm, stage your raid on the room floor (you do NOT need to lead them up the ramps), then `.rjson pull`. Each bot AUTONOMOUSLY paths up onto its platform by walking TOWARD its assigned add (move_to_target), then engages it. WHY move_to_target and not a fixed point: ANY normal MoveTo to an (x,y,z) -- a fixed anchor OR a live add's position -- runs through SearchForBestPath, which re-snaps Z to the SHORTEST-path surface = the slime directly UNDER the platform, so bots walk across the hazard to the spot below the add and never climb (confirmed in-game: stuck at z~292 while the add sat at z~312, then dragged it down once aggroed). move_to_target passes exact_waypoint=TRUE, keeping the add's literal Z, so recast paths UP THE RAMP to the platform poly. SPLIT (role-based, JSON-only): LEFT/Stalagg = MAIN TANK + ranged DPS + half the healers; RIGHT/Feugen = OFF-TANK + melee DPS + half the healers. Healers are divided via the `split` trigger field (`split:1/2` left, `split:2/2` right) so neither tank goes unhealed -- fixes the old 'all healers ride left' problem. Role sets are kept disjoint with `!` exclusions (`melee,!tank,!healer`, `ranged,!healer`) so no bot is pulled two ways. The instant combat starts the PROVEN C++ actions take over (ThaddiusAttackNearestPetAction for on-platform positioning + Magnetic Pull swaps; ThaddiusMoveToPlatformAction for the z312->z304 transition jump). The pull HANDS OFF automatically: move_to_target LATCHES once a bot REACHES its add (not merely 'in combat'), then yields every tick so the C++ owns positioning -- this lets healers heal (instead of chasing their moving add forever) and lets a tank SWAP-AND-HOLD the nearest add after a Magnetic Pull instead of running back. Latching on REACHED (not on combat) is deliberate: a bot flagged in combat early (off-tank taunt / Static Field AoE) while still on the ramp must keep CLIMBING, not hand off to the C++ (which can't climb) and get stuck at the bottom. The pull rules carry NO attack action -- the C++ engages the nearest add on arrival. They also set boss:\"\" (NO boss fallback): once a bot's add DIES the rule goes INERT (move_to_target finds no target and yields) instead of chasing Thaddius. WHY: move_to_target defaults its fallback to the file boss, so with the default the pull kept dragging bots toward Thaddius through the TRANSITION and POLARITY phases, fighting the polarity stack_point at EQUAL relevance (both +3) -- that was the 'run back and forth, can't hold the charge spot' bug. With boss:\"\" the pull is purely a one-add climb and is gone by the time polarity starts; generic dps/heal assist (not suppressed in the thaddius phase) handles boss damage between Polarity Shifts. No `.rjson stop` needed. Polarity is Level-2; add death-sync is the generic target_hp_ahead + @damage suppress. DEBUG: move_to_target emits a throttled `[RaidJson][move_to_target]` line in Playerbots.log per bot -- bot Z should rise toward the add's Z (~312.6) during the climb.",
   "rules": [
     {
-      "_comment": "PULL (on `.rjson pull`): MAIN TANK engages Stalagg once you've led it within 25y (so it follows you up the ramp first, then breaks off). Proximity gate also re-hands-off on Magnetic Pull: yanked to Feugen, it drops out of range here and the C++ nearest-pet rule retargets it.",
-      "trigger": { "shape": "manual_engage", "add": "stalagg", "role": "maintank", "range": 25.0 },
-      "actions": [ { "shape": "attack", "params": { "targets": "stalagg", "detect": "nearest" }, "priority": 1 } ]
+      "_comment": "PULL (on `.rjson pull`): MAIN TANK climbs TOWARD the live Stalagg (LEFT platform). move_to_target(+3) is the climb (exact-waypoint, the ONLY thing that paths UP the ramp; a fixed (x,y,z) dives into the slime). detect:nearest because the bot has no threat on Stalagg pre-pull. NO attack action: once move_to_target REACHES the add it hand-off-latches and yields, and the C++ `thaddius attack nearest pet` engages + holds the tank anchor. then:[stalagg,feugen] is the MAGNETIC PULL swap recovery: a Magnetic Pull FLINGS the tank ~80y to the other platform (seen at z~338, ABOVE Stalagg) where the in-combat C++ MoveTo can't climb back -- so it can't reach/taunt its new add and the add runs loose to whoever still has threat. After the first reach, `then` re-paths to the NEAREST add (the one it was thrown onto) and the latch re-arms when flung >distance+40 away, so it RE-CLIMBS via exact_waypoint, reaches, and hands back to the C++/its own taunt (now in range). The named `target` still drives the FIRST climb so the MT/OT split holds.",
+      "trigger": { "shape": "manual_engage", "role": "maintank" },
+      "actions": [
+        { "shape": "move_to_target", "params": { "target": "stalagg", "detect": "nearest", "boss": "", "distance": 3.0, "then": ["stalagg", "feugen"] }, "priority": 3 }
+      ]
     },
     {
-      "_comment": "PULL: OFF-TANK engages Feugen once led within 25y.",
-      "trigger": { "shape": "manual_engage", "add": "feugen", "role": "offtank", "range": 25.0 },
-      "actions": [ { "shape": "attack", "params": { "targets": "feugen", "detect": "nearest" }, "priority": 1 } ]
+      "_comment": "PULL: OFF-TANK climbs TOWARD the live Feugen (RIGHT platform). No attack -- C++ engages + holds once reached (see maintank). then:[stalagg,feugen] gives it the same Magnetic Pull swap recovery as the MT: after a swap flings it to the other platform it re-climbs (exact_waypoint) to the add it was thrown onto and locks it, instead of being stranded off-platform out of taunt range (the bug where the swapped add ran loose and the MT ended up holding both).",
+      "trigger": { "shape": "manual_engage", "role": "offtank" },
+      "actions": [
+        { "shape": "move_to_target", "params": { "target": "feugen", "detect": "nearest", "boss": "", "distance": 3.0, "then": ["stalagg", "feugen"] }, "priority": 3 }
+      ]
     },
     {
-      "_comment": "PULL: NON-TANKS (dps/healers) engage the nearest add once you've led them within 30y of either one. Two rules so it fires near either platform. The in-combat C++ then positions them to the ranged anchors.",
-      "trigger": { "shape": "manual_engage", "add": "stalagg", "role": "nontank", "range": 30.0 },
-      "actions": [ { "shape": "attack", "params": { "targets": ["feugen", "stalagg"], "detect": "nearest", "select": "nearest" }, "priority": 1 } ]
+      "_comment": "PULL: RANGED DPS (`ranged,!healer` -- healers split separately below; !healer because a ranged healer is `ranged` too) climb TOWARD Stalagg (LEFT), stopping ~5y short. No attack -- on reaching, hands off to the C++, which parks them at the ranged anchor and they DPS the nearest add.",
+      "trigger": { "shape": "manual_engage", "role": "ranged,!healer" },
+      "actions": [
+        { "shape": "move_to_target", "params": { "target": "stalagg", "detect": "nearest", "boss": "", "distance": 5.0 }, "priority": 3 }
+      ]
     },
     {
-      "trigger": { "shape": "manual_engage", "add": "feugen", "role": "nontank", "range": 30.0 },
-      "actions": [ { "shape": "attack", "params": { "targets": ["feugen", "stalagg"], "detect": "nearest", "select": "nearest" }, "priority": 1 } ]
+      "_comment": "PULL: HEALERS are SPLIT across both adds so neither tank goes unhealed (a single role token would send them all one way -- the '0 healers on the right' bug). split 1/2 = first half of the healer BOTS -> Stalagg (LEFT). Humans aren't counted, so the bots divide evenly. NO attack action -- healers climb then heal; once a healer REACHES its add, move_to_target latches and hands off, so the C++ parks it at the nearest add's ranged anchor and its heal rotation runs. The split persists because the C++ keys off the nearest add.",
+      "trigger": { "shape": "manual_engage", "role": "healer", "split": "1/2" },
+      "actions": [
+        { "shape": "move_to_target", "params": { "target": "stalagg", "detect": "nearest", "boss": "", "distance": 5.0 }, "priority": 3 }
+      ]
+    },
+    {
+      "_comment": "PULL: HEALERS split 2/2 = second half of the healer bots -> Feugen (RIGHT), so the off-tank side is healed. No attack action (see split 1/2).",
+      "trigger": { "shape": "manual_engage", "role": "healer", "split": "2/2" },
+      "actions": [
+        { "shape": "move_to_target", "params": { "target": "feugen", "detect": "nearest", "boss": "", "distance": 5.0 }, "priority": 3 }
+      ]
+    },
+    {
+      "_comment": "PULL: MELEE DPS climb TOWARD Feugen (RIGHT). No attack -- C++ engages the nearest add on arrival. role is `melee,!tank,!healer` NOT `melee`: IsMelee is just !IsRanged, so a melee TANK (and a melee-spec healer) reads as `melee` too -- with a bare `melee` the MAIN TANK matched this rule (-> Feugen, right) AND its own maintank rule (-> Stalagg, left) and ping-ponged through center. The !tank/!healer exclusions keep this to pure melee DPS; tanks are handled by the maintank/offtank rules, healers by the split healer rules.",
+      "trigger": { "shape": "manual_engage", "role": "melee,!tank,!healer" },
+      "actions": [
+        { "shape": "move_to_target", "params": { "target": "feugen", "detect": "nearest", "boss": "", "distance": 3.0 }, "priority": 3 }
+      ]
     },
 
     {
@@ -60,14 +83,25 @@
 
   "suppress": [
     {
-      "_comment": "ADD PHASE: no formation-follow / generic target-assist while the C++ pet action owns positioning + targeting. Combat-gated, so it does NOT suppress follow before/while approaching the pull (bots need follow to ride you up the ramp). Mirrors ThaddiusGenericMultiplier's pet-phase clamp.",
+      "_comment": "PULL WINDOW: while `.rjson pull` is active, suppress follow + formation so the autonomous climb (move_to_target +3) owns movement instead of bots being yanked back to the master. Inverts the old design, which intentionally left follow ON so bots rode you up the ramp.",
+      "trigger": { "shape": "manual_engage" },
+      "actions": ["follow", "combat formation move"]
+    },
+    {
+      "_comment": "ADD PHASE: no formation-follow / generic target-assist while the C++ pet action owns positioning + targeting. Combat-gated. Mirrors ThaddiusGenericMultiplier's pet-phase clamp.",
       "trigger": { "name": "thaddius phase pet" },
       "actions": ["combat formation move", "follow", "dps assist", "tank assist"]
     },
     {
-      "_comment": "THADDIUS PHASE: stop formation/master-follow from fighting the polarity stack. dps/tank assist NOT suppressed, so bots DPS the boss between polarity moves.",
+      "_comment": "NO IN-FIGHT TAUNTS (after the opening 5s). Magnetic Pull cleanly transfers threat in the boss script (boss_thaddius.cpp:530-537): MT loses Stalagg, becomes top on Feugen; OT vice-versa -- the swap doesn't need a re-taunt to complete. But the bots' OWN class taunts kept firing, and a paladin's range causes cross-platform steals: Hand of Reckoning (30y) and especially Righteous Defense (40y to a friendly + AoE taunt of that friendly's attackers) let the MT, flung to Feugen, taunt Stalagg right back off the OT through Gheed -- and `MT has aggro on both, mob runs to the other platform` follows. Disabling ALL the class taunts (paladin / DK / warrior / druid + the generic alias) during the pet phase lets the threat-transfer + each tank's own melee threat rebuild OWN the swap. after_ms:5000 leaves a 5s opening window so the initial pull's first-taunt-to-grab-the-add still fires for each tank's named add -- in-fight taunts are the only ones zeroed. Earlier `target_victim` attempt was wrong on TWO axes: (a) premise that threat already transfers without help was right for the boss but missed that the OT often can't reach to re-establish (the z~338 fling -- now handled by `then` re-climb), and (b) it listed only `taunt spell`, which paladin/DK strategies ALIAS to their own class actions, so it was inert.",
+      "trigger": { "name": "thaddius phase pet" },
+      "after_ms": 5000,
+      "actions": ["taunt", "taunt spell", "dark command", "hand of reckoning", "righteous defense", "growl"]
+    },
+    {
+      "_comment": "THADDIUS PHASE: stop EVERY non-rotation movement from fighting the polarity stack. Polarity stack_point is +3 (rel 63) and yields once parked (within 3y) so the bot's rotation runs -- the moment it yields, anything else movement-y at lower relevance grabs the tick and shoves the bot OUT of the 3y radius, so stack_point re-engages, moves it back, repeats -- the 'flailing' the user saw. Confirmed in log (2026-05-28): melee bots Talason/Chadw/Magicguyman/Mech each had 50-125 `set behind - OK` per polarity attempt (re-anchoring BEHIND the boss instead of staying on the side polarity anchor), `flee` 83x (cross-charge damage scatters them OUT of position rather than helping -- the only fix for charge damage is to STAY in the same-polarity stack), `tank face` 87x. All <= rel 50, so they only ran when stack_point yielded -- but yield was treated as 'free to move' instead of 'parked, just cast.' Suppress them all so once stack_point parks, the only thing left in the queue is the bot's CASTS (rotation/heals) -- which don't move it. `dps assist` (rel 50) is NOT suppressed so bots still pick Thaddius as the cast target between Polarity Shifts. Auto-attacks aren't affected (only relevance-driven actions are).",
       "trigger": { "name": "thaddius phase thaddius" },
-      "actions": ["combat formation move", "follow"]
+      "actions": ["combat formation move", "follow", "set behind", "tank face", "reach melee", "reach spell", "autopilot move", "flee"]
     },
     {
       "_comment": "DEATH-SYNC throttle: zero a bot's non-healing damage casts while its current add is <=40% HP and the other add is >=3% higher, so the two adds finish within the ~5s revive window. Self-deactivates once the adds are dead. Data form of ThaddiusGenericMultiplier's <=40%/>=3% clamp.",

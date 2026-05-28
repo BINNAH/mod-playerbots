@@ -77,6 +77,24 @@ public:
     std::string const getName() override { return "json hpahead::" + qualifier; }
 };
 
+// Shape "target_victim": fires while the bot's CURRENT TARGET is being hit by a
+// BOT group member matching `role` -- "my target is already handled by a <role>".
+// Built for SUPPRESS: zero "taunt spell" while a tank's add is already on ANOTHER
+// tank, so the two tanks never taunt off each other during a Magnetic Pull swap (the
+// boss's threat-swap re-assigns them on its own; the taunt is only meant to grab an
+// add back from a DPS/healer -- where the victim is NOT a tank, so this stays
+// inactive and the taunt fires). A human / non-bot victim reads as "not handled"
+// (returns false) so the taunt still recovers the add. Qualifier: "role=<csv>" (same
+// tokens as encounter_active, incl. `!`).
+class JsonTargetVictimTrigger : public Trigger, public Qualified
+{
+public:
+    JsonTargetVictimTrigger(PlayerbotAI* ai) : Trigger(ai, "json targetvictim") {}
+
+    bool IsActive() override;
+    std::string const getName() override { return "json targetvictim::" + qualifier; }
+};
+
 // Shape "manual_engage": the "call the pull" gate. Fires while the bot's owner
 // has issued `.rjson pull` (RaidJsonMode::IsEngaged) AND `role` matches AND (if
 // `add` is given) that add is alive within `range` yards. Lets the raid leader

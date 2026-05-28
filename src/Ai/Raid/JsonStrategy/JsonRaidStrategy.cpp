@@ -4,6 +4,7 @@
 #include "AiObjectContext.h"
 #include "GenericSpellActions.h"  // CastSpellAction / CastHealingSpellAction (@damage token)
 #include "JsonStrategyLoader.h"
+#include "Timer.h"                // getMSTime (grace-window timer for suppress)
 #include "Trigger.h"
 
 void JsonRaidStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
@@ -33,7 +34,7 @@ void JsonRaidStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
         ruleSet.Load();
 
     for (JsonResolvedSuppress const& s : ruleSet.SuppressRules())
-        multipliers.push_back(new JsonSuppressMultiplier(botAI, s.trigger, s.names));
+        multipliers.push_back(new JsonSuppressMultiplier(botAI, s.trigger, s.names, s.minAgeMs));
 }
 
 float JsonSuppressMultiplier::GetValue(Action* action)
@@ -50,7 +51,24 @@ float JsonSuppressMultiplier::GetValue(Action* action)
     }
 
     if (!_trigger || !_trigger->IsActive())
+    {
+        // Trigger inactive -> reset the grace timer so the next activation gets
+        // a fresh window (e.g. a multi-wave phase that re-enters).
+        _activeSince = 0;
         return 1.0f;
+    }
+
+    // Grace window: don't suppress until the trigger has been continuously active
+    // for `_minAgeMs`. Lets a phase's INITIAL pickup happen normally (e.g. tanks
+    // taunting their first add at pull) before in-phase suppression kicks in.
+    if (_minAgeMs > 0)
+    {
+        uint32 now = getMSTime();
+        if (_activeSince == 0)
+            _activeSince = now;
+        if (now - _activeSince < _minAgeMs)
+            return 1.0f;
+    }
 
     // Exact action-name match (the original behavior, e.g. "avoid aoe").
     if (_names.count(action->getName()))

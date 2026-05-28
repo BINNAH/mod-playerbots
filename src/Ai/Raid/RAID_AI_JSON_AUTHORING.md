@@ -100,6 +100,17 @@ commas, e.g. `"ranged,healer"`. `offtank1/2/3` are the 1st/2nd/3rd **assist tank
 (by index) — use them to give one off-tank a different job than the others (e.g.
 `offtank1` does a tank swap on the boss while `offtank2,offtank3` tank adds).
 
+> **The predicates OVERLAP — comma is OR, prefix `!` to EXCLUDE (AND).** `IsMelee`
+> is literally `!IsRanged`, so a melee **tank** *and* a melee-spec **healer** both
+> read as `melee`; likewise a healer can read as `melee`. A bare `"melee"` rule
+> therefore also catches the tanks — on Thaddius this made the **main tank** match
+> both `maintank` (→ left add) and `melee` (→ right add) and oscillate through the
+> center. Write **"melee DPS only" as `"melee,!tank,!healer"`**. Positive tokens are
+> OR-ed (≥1 must match); each `!token` is a hard exclusion AND-ed in. A list of only
+> exclusions (`"!tank"`) matches anyone tripping none of them. When you split a raid
+> across two targets by role, make the role sets provably disjoint or one bot will be
+> pulled two ways.
+
 ### Trigger shape `pre_cast_window` (→ `JsonPreCastWindowTrigger`)
 Fires in the short window *before* a boss's **periodic** cast, so externals /
 defensives can be pre-applied and carry through the hit — the case reactive
@@ -184,6 +195,26 @@ Evaluated per bot (it reads *that* bot's target), so the bots on the **ahead**
 { "shape": "target_hp_ahead", "others": ["feugen", "stalagg"], "margin": 3, "below": 40 }
 ```
 
+### Trigger shape `target_victim` (→ `JsonTargetVictimTrigger`)
+Fires while the bot's **current target** is being hit by a **bot** group member whose
+role matches `role` (default `tank`) — i.e. *"my target is already handled by a
+\<role\>."* Built for **`suppress`**: zero `"taunt spell"` while a tank's add is
+already on **another tank**, so two tanks never taunt off each other during a
+Magnetic-Pull-style swap (the boss's threat-swap re-assigns them on its own). The
+taunt still fires to grab an add back from a DPS/healer — that victim isn't a tank,
+so this stays inactive. A human / non-bot victim reads as "not handled" (inactive),
+so the taunt can still recover the add. Evaluated per bot (reads *that* bot's target).
+
+| Field  | Type   | Default | Meaning                                                       |
+|--------|--------|---------|---------------------------------------------------------------|
+| `role` | string | `tank`  | Victim role to match (same tokens as `encounter_active`, incl. `!`). |
+
+```json
+"suppress": [
+  { "trigger": { "shape": "target_victim", "role": "tank" }, "actions": ["taunt spell"] }
+]
+```
+
 ### Trigger shape `manual_engage` (→ `JsonManualEngageTrigger`)
 The **"call the pull"** gate. Fires while the bot's owner has issued **`.rjson pull`**
 (an in-memory engage flag), `role` matches, and (if `add` is set) that add is alive
@@ -191,23 +222,46 @@ within `range`. Lets the raid leader kick off the engage *on command* — e.g. m
 tank on one add, off-tank on the other — instead of waiting for combat. `.rjson stop`
 (or `.rjson off`) clears the flag.
 
-**`range` is the pathing trick.** Bots **can't path the long low→high climb onto a
-platform on their own** (the navmesh straight-lines them through the hazard below).
-So gate the engage on proximity: while a bot is *far* from its `add` the rule is
-silent and the bot just **follows you up the ramp** (riding your route); it only
-breaks off to engage once you've led it within `range`. The same gate **auto-hands-off
-on a knockback/pull** — yanked out of `range`, the bot falls through to the in-combat
-rules (e.g. the Level-1 nearest-pet positioning), which retarget it.
+> **Hand-off is in the `move_to_target` ACTION, not here.** The pull stays active in
+> combat on purpose; `move_to_target` latches once a bot **reaches** its add and then
+> yields, so the in-combat AI takes over (see that shape). Do **not** gate this
+> trigger on `IsInCombat()` — a bot flagged in combat *early* (an off-tank taunting,
+> or anyone caught by AoE while still on the ramp) would lose its climb action and
+> hand off to a C++ action that can't climb, getting stuck at the bottom. Latching on
+> *reached* keeps it climbing until it's actually up. So you don't need `.rjson stop`
+> after a clean pull. Corollary: **give pull rules no `attack` action** (especially
+> healers) — let `move_to_target` climb, then the in-combat AI engages the nearest add
+> / parks ranged at the anchor; a fixed `attack` here just fights the combat AI (e.g.
+> drags a tank back to its original add after a swap).
+
+**Pairing with the climb (`move_to_target`).** For a low→high platform engage,
+drive the climb with a higher-priority **`move_to_target`** action on the same rule:
+it walks the bot **toward the live add's Unit**, which paths up the ramp on its own
+(see that shape — a fixed `(x,y,z)` point does *not* climb; it dives into the hazard
+below). The `attack` then fires on arrival. So the modern Thaddius pull is fully
+autonomous (no human leading); see `thaddius.json`.
+
+**`range` (legacy / assignment gate).** An earlier workaround for the climb gated
+the engage on proximity so a bot stayed silent and just **followed you up the ramp**
+until you led it within `range` of its `add`. `move_to_target` supersedes that for
+the *climb* itself, but `range` is still useful as a pure **assignment gate** (only
+break off to *this* add once near it) and it **auto-hands-off on a knockback/pull**:
+yanked out of `range`, the bot falls through to the in-combat rules (e.g. the
+Level-1 nearest-pet positioning), which retarget it.
 
 | Field   | Type        | Default | Meaning                                                                 |
 |---------|-------------|---------|-------------------------------------------------------------------------|
 | `add`   | string\|int | (none)  | Only fire while this add is **alive** (proximity scan, threat-independent). The per-add assignment key; also stops the rule once the add dies. |
 | `range` | float       | `0`     | With `add`: only fire within this many yards of it (`0` = any distance in sight). Set it so bots follow you up first and break off near their add. |
-| `role`  | string      | (all)   | Role filter (same tokens as `encounter_active`) — give MT vs OT different adds. |
+| `role`  | string      | (all)   | Role filter (same tokens as `encounter_active`, incl. `!` exclusions) — give MT vs OT different adds. |
+| `split` | string      | (none)  | `"i/n"`: divide the **bots** matching `role` into `n` contiguous groups (by stable group order) and fire only for the `i`-th. Sends **one role to two targets** — e.g. healers `split:"1/2"` → left add, `split:"2/2"` → right — which a single role token can't. Humans aren't counted, so the bots divide evenly; dead bots still count (sides don't reshuffle on a death). |
 
 ```json
 { "trigger": { "shape": "manual_engage", "add": "stalagg", "role": "maintank", "range": 25.0 },
   "actions": [ { "shape": "attack", "params": { "targets": "stalagg", "detect": "nearest" }, "priority": 1 } ] }
+
+{ "trigger": { "shape": "manual_engage", "role": "healer", "split": "2/2" },
+  "actions": [ { "shape": "move_to_target", "params": { "target": "feugen", "detect": "nearest", "distance": 5.0 }, "priority": 3 } ] }
 ```
 
 ### Action shapes
@@ -218,6 +272,7 @@ rules (e.g. the Level-1 nearest-pet positioning), which retarget it.
 | `stack_point`     | `JsonStackPointAction`      | `x, y, radius`, `hold` (bool), `z` (optional) | Move to (x,y) and stay within `radius` (tight raid stack). **`hold:true`** = once parked, *own the tick* (stand still) instead of yielding — stops a bot parked **off** the boss with no current job (e.g. a Gluth off-tank between chow waves) from falling through to generic combat and running at the boss. **`z`** = an explicit anchor height for an **elevated** spot (Thaddius add platforms): moves in 3D so the bot climbs instead of yielding on the floor below. Omit both for a plain ground stack. |
 | `spread`          | `JsonSpreadAction`          | `radius`, `min_interval` (ms, default 3000) | Move away from the nearest **other ranged/healer** within `radius`. Ignores the melee/tank stack and repositions at most once per `min_interval` so casters aren't interrupted. Yields when clear. |
 | `attack`          | `JsonAttackAction`          | `targets` (name/entry, string or array), `boss` (fallback, default file `boss`), `detect` (`threat`\|`nearest`), `select` (`lowest_hp`\|`nearest`), `sticky` (bool, default true), `max_hp_pct`, `max_range` | Pick one creature to attack — the lowest-HP / nearest match from `targets`, falling back to `boss` when none are alive. **`detect`** = `threat` scans the attacker/threat list (default); `nearest` scans nearby NPCs so **off-threat** objects are visible (Web Wrap cocoons, un-aggroed adds). **`select`** = `lowest_hp` (default when `detect:threat`) is "kill adds first"; `nearest` (default when `detect:nearest`) is closest-first. **`max_hp_pct`** / **`max_range`** (both default `0` = off) filter the candidate set to adds at/below that HP% and/or within that many yards — so `{targets:"zombie chow", max_hp_pct:10, max_range:35}` self-gates to the Decimate burn (chow are only candidates while at 5%, else it falls back to `boss`), no separate phase trigger needed. **`sticky`** (default `true`) keeps the bot on its current match until it dies — no cast-cancel thrash when two candidates' "best" flips tick-to-tick. **`sticky:false`** re-picks the best every tick: use it with `select:nearest` so a tank yanked to the other add by **Magnetic Pull** swaps to the now-nearest add instead of running back to its original target (Thaddius). Matches by name **or** entry id; yields when already on target. To just focus one creature (e.g. the boss), name it in `targets`. Merges the former `attack_target`, `attack_priority` (`threat`+`lowest_hp`) and `attack_nearest` (`nearest`+`nearest`). |
+| `move_to_target`  | `JsonMoveToTargetAction`    | `target` (name/entry, string or array), `detect` (`nearest`\|`threat`, default **`nearest`**), `distance` (yd, yield threshold, default 0), `boss` (fallback, default file `boss`), `then` (swap-recovery set, string or array) | Path to a live named creature's **actual position** (the nearest match) via an **exact-waypoint** `MoveTo` — the generic "run to the add / boss" primitive, and the only reliable **elevated-platform climb**. The trap it sidesteps: a normal `MoveTo` to any `(x,y,z)` (fixed point *or* a live unit) routes through `SearchForBestPath`, which **discards your Z** and re-snaps the destination to the **shortest-path** surface — from the floor that's the hazard *under* the platform, so bots walk across it to the spot below the target and never climb (the Thaddius pull bug; confirmed in-game — bots stuck at z≈292 while the add sat at z≈312, then dragged it down once aggroed). `move_to_target` passes `exact_waypoint=true`, keeping the target's literal Z, so recast routes **up the ramp** to the platform poly (still a real navmesh path). `detect` defaults to **`nearest`** (a proximity scan) — unlike `attack` — because the use case is reaching something the bot doesn't threaten yet (the `.rjson pull`). **Reached-latch:** it *holds* the tick while climbing (so nothing drags it off the ramp), and the instant it gets within `distance` it **latches and yields every tick thereafter** — handing positioning to the in-combat AI even as the add moves (a healer's add walking, a tank thrown by Magnetic Pull). It re-arms only when the bot is **out of combat AND far** from the target (a wipe / fresh pull), so the latch survives the whole engagement. Latching on *reached* (not "in combat") matters: a bot flagged in combat early while still climbing keeps climbing instead of stalling. Emits a throttled `[RaidJson][move_to_target]` debug line per bot in `Playerbots.log` (`reached=1` = handed off; watch the bot's Z **rise toward the target's** during the climb). **`boss` fallback hazard:** when no named target is alive it falls back to `boss` (default = the **file boss**), and since the rule's trigger can stay active into later phases (e.g. `manual_engage` runs the whole encounter), that fallback makes the pull keep walking bots toward the *boss* after the add dies — on Thaddius this fought the polarity `stack_point` at equal relevance and produced a "run back and forth, can't hold the charge spot" bug. For a pure pull-to-add rule that should go **inert** once its add dies, set **`"boss": ""`** to disable the fallback (no target ⇒ yields). **`then` (Magnetic-Pull swap recovery):** the permanent in-combat latch is wrong for a tank that gets *flung off its platform* by a swap — the in-combat C++ `MoveTo` can't climb back, so it's stranded out of taunt range (Thaddius: seen at z≈338 above Stalagg) and its add runs loose. Set `then` to the add set the tank may be thrown across (e.g. `["stalagg","feugen"]`): after the **first** reach the rule re-paths to the **nearest** of `then` (the add it landed on, not its original), and the latch **re-arms in combat** when the bot is flung **> distance+40** away so it re-climbs via exact-waypoint, reaches, and hands back. The named `target` still drives the *first* climb so the initial role split holds; both reset on a real wipe (out of combat + far). Omit `then` (default) for healers/ranged/melee that never get pulled — they keep the permanent latch. |
 | `tank_adds`       | `JsonTankAddsAction`        | `add`, `boss` (default file `boss`)       | Off-tank (assist-tank #0) gathers every living add named `add` and drags it onto the main tank / boss. attack → taunt → reposition. |
 | `tank_swap`       | `JsonTankSwapAction`        | `aura` (debuff name), `stacks` (default 1), `boss` (default file `boss`), `detect` (`threat`\|`nearest`), `watch` (`victim`\|`maintank`) | **A16 stacking-debuff tank rotation** — a self-contained 2-tank swap. Wire it on **both** swap tanks (e.g. `maintank` and `offtank1`). For each: **if I'm the active tank** (the boss is on me) it holds the boss and *yields to my own rotation* so I tank + go ham; **if I'm the off tank** it **stands ready and does NOT attack the boss** (owns the tick, so no premature pull-aggro) until the watched tank carries `stacks`+ of `aura` (Mortal Wound, Crunch Armor, Gormok Impale, …), then it taunts and takes over. Taunt is `DoSpecificAction("taunt spell")` which **force-runs** the class taunt regardless of relevance, so a `suppress` of `"taunt spell"` (to stop a relieved tank auto-taunting back) doesn't block the swap. **`watch`** = `victim` (default): gate on the boss's **current victim** → symmetric ping-pong, each tank takes over when the other hits the cap (Gluth Mortal Wound, Kologarn, Festergut, AQ40). `maintank`: gate on the designated **main tank**, and only the **primary relief tank (assist #0)** acts, so one off-tank covers while the MT detoxes and the rest keep their own job. `detect:nearest` lets a swap tank that isn't currently on the boss still locate him. |
 | `snare_area`      | `JsonSnareAreaAction`       | `spells` (array, ordered), `add` (name/entry), `target` (`self`\|`nearest`\|`leak`), `range`, `boss` (for `leak`) | Cast a control / AoE-threat spell on the adds while a **lower-priority** movement shape (`orbit_point` / `stack_point`) holds the path. Tries each spell in `spells` the bot **knows and has off cooldown**, in order, firing the first that lands — so one rule can list every class's option and each bot fires its own (the Four Horsemen "opening defensive" idiom; generic form of the C++ `CastZombieThreat`). **`target`** = `self` (cast on the bot for self/ground-centered AoE — Frost Nova, Consecration, D&D; requires ≥1 matching add within `range` so a cooldown isn't wasted), `nearest` (the nearest matching add within `range` of the bot), or `leak` (the add **nearest the boss** — the one about to reach it — within `range` of the boss). **Yields** when no add qualifies / nothing is castable, so it layers cleanly over the movement underneath. The Blink/Disengage escape is just this shape: `{spells:["Blink","Disengage"], target:"self"}` under an `adds_near {range:6, count:1}`. |
@@ -230,6 +285,7 @@ rules (e.g. the Level-1 nearest-pet positioning), which retarget it.
 { "shape": "attack",          "params": { "targets": "anub'rekhan" }, "priority": 1 }
 { "shape": "attack",          "params": { "targets": "crypt guard", "boss": "anub'rekhan" }, "priority": 1 }
 { "shape": "attack",          "params": { "targets": 16486, "detect": "nearest", "boss": "maexxna" }, "priority": 2 }
+{ "shape": "move_to_target",  "params": { "target": "stalagg", "detect": "nearest", "distance": 3.0 }, "priority": 3 }
 { "shape": "tank_adds",       "params": { "add": "crypt guard", "boss": "anub'rekhan" }, "priority": 2 }
 { "shape": "timed_safe_zone", "params": { "zones": [[2756.0,-3704.0],[2794.9,-3668.1]], "pattern": [3,2,1,0,1,2], "z": 276.54, "first_at": 7000, "interval": 4000, "hold": true }, "priority": 32 }
 { "shape": "orbit_point",     "params": { "x": 3281.23, "y": -3310.38, "radius": 35.0, "segments": 8, "clockwise": true, "interval": 15000 }, "priority": 3 }
@@ -279,6 +335,19 @@ can't express). This is the data form of the C++ DPS-clamp multipliers: pair it
 with the `target_hp_ahead` trigger for a twin-add death-sync throttle (slow the
 ahead add's DPS so the other catches up). Soft throttle — like the C++ original,
 melee auto-attacks aren't suppressed, only casts.
+
+**Grace window `after_ms`** (or `after_seconds`) — optional per suppress entry:
+suppression activates only once the `trigger` has been **continuously active for
+≥ N ms**. Leaves an opening window where the listed actions still fire normally,
+then disables them for the rest of the phase. The grace timer resets whenever the
+trigger goes inactive, so a multi-wave re-entry gets a fresh window. Typical use:
+**Thaddius no-in-fight-taunts** — `{ trigger: "thaddius phase pet", after_ms: 5000,
+actions: ["taunt", "taunt spell", "dark command", "hand of reckoning",
+"righteous defense", "growl"] }`. Magnetic Pull cleanly transfers threat in the
+boss script, so a re-taunt is unnecessary and a paladin's 30/40-yard taunt
+(Hand of Reckoning / Righteous Defense) lets the MT steal back across platforms.
+The 5s grace preserves the *initial* tank pickup at the pull, then disables every
+class taunt for the rest of the add phase.
 
 The primary use: let a movement shape **yield the tick for instant casts**
 (`cast_while_moving`) without the eruption-dodge / reach / formation actions

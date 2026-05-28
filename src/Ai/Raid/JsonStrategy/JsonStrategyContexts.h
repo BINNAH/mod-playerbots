@@ -38,6 +38,7 @@ public:
         creators["json stack"] = &JsonStrategyActionContext::json_stack;
         creators["json spread"] = &JsonStrategyActionContext::json_spread;
         creators["json attackpick"] = &JsonStrategyActionContext::json_attackpick;
+        creators["json movetotarget"] = &JsonStrategyActionContext::json_movetotarget;
         creators["json tankadds"] = &JsonStrategyActionContext::json_tankadds;
         creators["json safezone"] = &JsonStrategyActionContext::json_safezone;
         creators["json posboss"] = &JsonStrategyActionContext::json_posboss;
@@ -50,6 +51,7 @@ private:
     static Action* json_stack(PlayerbotAI* ai) { return new JsonStackPointAction(ai); }
     static Action* json_spread(PlayerbotAI* ai) { return new JsonSpreadAction(ai); }
     static Action* json_attackpick(PlayerbotAI* ai) { return new JsonAttackAction(ai); }
+    static Action* json_movetotarget(PlayerbotAI* ai) { return new JsonMoveToTargetAction(ai); }
     static Action* json_tankadds(PlayerbotAI* ai) { return new JsonTankAddsAction(ai); }
     static Action* json_safezone(PlayerbotAI* ai) { return new JsonTimedSafeZoneAction(ai); }
     static Action* json_posboss(PlayerbotAI* ai) { return new JsonPositionVsBossAction(ai); }
@@ -67,6 +69,7 @@ public:
         creators["json addsnear"] = &JsonStrategyTriggerContext::json_addsnear;
         creators["json hpahead"] = &JsonStrategyTriggerContext::json_hpahead;
         creators["json engage"] = &JsonStrategyTriggerContext::json_engage;
+        creators["json targetvictim"] = &JsonStrategyTriggerContext::json_targetvictim;
     }
 
 private:
@@ -75,6 +78,7 @@ private:
     static Trigger* json_addsnear(PlayerbotAI* ai) { return new JsonAddsNearTrigger(ai); }
     static Trigger* json_hpahead(PlayerbotAI* ai) { return new JsonTargetHpAheadTrigger(ai); }
     static Trigger* json_engage(PlayerbotAI* ai) { return new JsonManualEngageTrigger(ai); }
+    static Trigger* json_targetvictim(PlayerbotAI* ai) { return new JsonTargetVictimTrigger(ai); }
 };
 
 #endif

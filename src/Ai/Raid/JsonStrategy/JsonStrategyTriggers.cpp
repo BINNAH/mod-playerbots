@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 
 static bool IEquals(std::string a, std::string b)
@@ -35,42 +36,101 @@ static bool BossCastingNamed(Unit* boss, std::string const& name)
     return false;
 }
 
-// Match `bot` against a comma-separated role list (OR semantics).
+// Evaluate a single role token against `bot`. Unknown token -> false.
+static bool RoleToken(PlayerbotAI* botAI, Player* bot, std::string const& role)
+{
+    if (role == "all")         return true;
+    if (role == "maintank")    return botAI->IsMainTank(bot);
+    if (role == "offtank")     return botAI->IsAssistTank(bot);
+    if (role == "offtank1")    return botAI->IsAssistTankOfIndex(bot, 0);
+    if (role == "offtank2")    return botAI->IsAssistTankOfIndex(bot, 1);
+    if (role == "offtank3")    return botAI->IsAssistTankOfIndex(bot, 2);
+    if (role == "tank")        return botAI->IsTank(bot);
+    if (role == "notmaintank") return !botAI->IsMainTank(bot);
+    if (role == "nontank")     return !botAI->IsTank(bot);
+    if (role == "ranged")      return botAI->IsRanged(bot);
+    if (role == "melee")       return botAI->IsMelee(bot);
+    if (role == "healer")      return botAI->IsHeal(bot);
+    if (role == "dps")         return botAI->IsDps(bot);
+    return false;
+}
+
+// Match `bot` against a comma-separated role list. Positive tokens are OR-ed (at
+// least one must match); tokens prefixed with `!` are EXCLUSIONS, AND-ed in (each
+// must be false). This is essential because the predicates overlap: IsMelee is just
+// !IsRanged, so a melee TANK is `melee` too -- without `!tank` a `"melee"` rule also
+// catches both tanks, and on Thaddius the main tank then matched both `maintank`
+// (-> Stalagg, left) and `melee` (-> Feugen, right) and ping-ponged through center.
+// So "melee DPS only" is `"melee,!tank,!healer"`. A list of only exclusions (e.g.
+// `"!tank"`) matches anyone who trips none of them. Empty list = match all.
 static bool RoleMatches(PlayerbotAI* botAI, Player* bot, std::string const& roleCsv)
 {
     if (roleCsv.empty())
         return true;
 
-    for (std::string const& role : JsonSplit(roleCsv, ','))
+    bool hasPositive = false;
+    bool positiveHit = false;
+    for (std::string token : JsonSplit(roleCsv, ','))
     {
-        if (role == "all")
-            return true;
-        else if (role == "maintank" && botAI->IsMainTank(bot))
-            return true;
-        else if (role == "offtank" && botAI->IsAssistTank(bot))
-            return true;
-        else if (role == "offtank1" && botAI->IsAssistTankOfIndex(bot, 0))
-            return true;
-        else if (role == "offtank2" && botAI->IsAssistTankOfIndex(bot, 1))
-            return true;
-        else if (role == "offtank3" && botAI->IsAssistTankOfIndex(bot, 2))
-            return true;
-        else if (role == "tank" && botAI->IsTank(bot))
-            return true;
-        else if (role == "notmaintank" && !botAI->IsMainTank(bot))
-            return true;
-        else if (role == "nontank" && !botAI->IsTank(bot))
-            return true;
-        else if (role == "ranged" && botAI->IsRanged(bot))
-            return true;
-        else if (role == "melee" && botAI->IsMelee(bot))
-            return true;
-        else if (role == "healer" && botAI->IsHeal(bot))
-            return true;
-        else if (role == "dps" && botAI->IsDps(bot))
-            return true;
+        bool negate = (!token.empty() && token[0] == '!');
+        if (negate)
+            token = token.substr(1);
+
+        bool match = RoleToken(botAI, bot, token);
+        if (negate)
+        {
+            if (match)
+                return false;  // a forbidden role -> reject outright
+        }
+        else
+        {
+            hasPositive = true;
+            if (match)
+                positiveHit = true;
+        }
     }
-    return false;
+    // Passed every exclusion; require a positive hit only if positives were listed.
+    return !hasPositive || positiveHit;
+}
+
+// Stable role-split partition. `split` is "i/n": divide the BOTS in the group that
+// match `role` into n contiguous partitions (by the group's member order, which is
+// stable across ticks) and fire only for the i-th (1-indexed). This sends one role
+// to two targets -- e.g. healers `split:"1/2"` -> left add, `split:"2/2"` -> right --
+// which a single role token can't express. Each member is classified with its OWN
+// bot AI, so the human (no PlayerbotAI) isn't counted and the BOTS divide evenly.
+// Dead bots still count (the side assignment stays put when someone dies, instead of
+// the survivors re-shuffling sides mid-fight). Returns true (no-op) when `split` is
+// absent or malformed.
+static bool RoleSplitMatches(Player* bot, std::string const& role, std::string const& split)
+{
+    if (split.empty())
+        return true;
+    int idx = 0, parts = 0;
+    if (std::sscanf(split.c_str(), "%d/%d", &idx, &parts) != 2 || parts < 1 || idx < 1 || idx > parts)
+        return true;  // malformed -> don't filter
+
+    Group* group = bot->GetGroup();
+    if (!group)
+        return idx == 1;  // ungrouped lone bot takes the first partition
+
+    int myRank = -1, count = 0;
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || member->GetMapId() != bot->GetMapId())
+            continue;
+        PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
+        if (!memberAI || !RoleMatches(memberAI, member, role))
+            continue;
+        if (member == bot)
+            myRank = count;
+        ++count;
+    }
+    if (myRank < 0 || count == 0)
+        return false;
+    // Contiguous partitioning: rank r of c -> partition floor(r*parts/c), 0-based.
+    return ((myRank * parts) / count) + 1 == idx;
 }
 
 // Match `bot` against a comma-separated class list (OR semantics). Empty = any.
@@ -280,6 +340,29 @@ bool JsonTargetHpAheadTrigger::IsActive()
 }
 
 // ---------------------------------------------------------------------------
+// target_victim
+// ---------------------------------------------------------------------------
+bool JsonTargetVictimTrigger::IsActive()
+{
+    std::string role = JsonKv(qualifier, "role");
+    if (role.empty())
+        return false;
+    Unit* target = AI_VALUE(Unit*, "current target");
+    if (!target)
+        return false;
+    Unit* victim = target->GetVictim();
+    if (!victim)
+        return false;
+    Player* vp = victim->ToPlayer();
+    if (!vp)
+        return false;  // a pet/NPC has it -> not "handled by a <role>"
+    PlayerbotAI* vai = GET_PLAYERBOT_AI(vp);
+    if (!vai)
+        return false;  // the human (or any non-bot) -> let the taunt still recover the add
+    return RoleMatches(vai, vp, role);
+}
+
+// ---------------------------------------------------------------------------
 // manual_engage
 // ---------------------------------------------------------------------------
 bool JsonManualEngageTrigger::IsActive()
@@ -288,7 +371,20 @@ bool JsonManualEngageTrigger::IsActive()
     if (!RaidJsonMode::instance().IsEngaged(bot->GetGUID()))
         return false;
 
-    if (!RoleMatches(botAI, bot, JsonKv(qualifier, "role")))
+    // NOTE: the pull stays active in combat ON PURPOSE; the hand-off to the in-combat
+    // C++ is done inside the `move_to_target` ACTION (its reached-latch), not here. An
+    // earlier `if (bot->IsInCombat()) return false;` here was wrong: a bot flagged in
+    // combat early (off-tank taunt / Static Field AoE) while still on the ramp lost
+    // its climb action and handed off to the C++ -- which can't climb -- and got stuck
+    // at the bottom. The latch hands off only once the bot has REACHED its add.
+
+    std::string role = JsonKv(qualifier, "role");
+    if (!RoleMatches(botAI, bot, role))
+        return false;
+
+    // Optional "i/n" split: divide same-role bots across two adds (e.g. healers
+    // half to each platform). Empty/malformed = no split.
+    if (!RoleSplitMatches(bot, role, JsonKv(qualifier, "split")))
         return false;
 
     // Optional add gate: only while the assigned add is alive AND (if `range` is
