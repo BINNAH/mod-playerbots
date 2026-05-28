@@ -38,7 +38,7 @@
       ]
     },
     {
-      "_comment": "DPS clear adds first, then the boss: a dying Crypt Guard bursts into 10 Corpse Scarabs that swarm the raid, so both must be named here or ranged ignore the scarabs and tunnel the boss while the swarm chews on the casters. Targeting a scarab also drops the casters' AoE (Mind Sear / Blizzard) onto the cluster. Outside Locust Swarm (ranged also spread via the rule above).",
+      "_comment": "DPS clear the Crypt Guards and their Corpse Scarabs before the boss (a dying guard bursts into 10 scarabs); both must be named or ranged tunnel the boss and the swarm chews the casters. Outside Locust Swarm.",
       "trigger": { "shape": "encounter_active", "role": "dps", "boss_aura": "locust swarm", "aura_present": false },
       "actions": [
         { "shape": "attack", "params": { "targets": ["crypt guard", "corpse scarab"], "boss": "anub'rekhan" }, "priority": 1 }

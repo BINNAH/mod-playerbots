@@ -3,14 +3,14 @@
   "boss": "patchwerk",
   "rules": [
     {
-      "_comment": "Hateful Strike soak - the ONE coordination point of the fight, expressed as data. On 25-man Patchwerk hits the highest-HP player among the top-2 threat targets within 5y (excluding the current victim) every 1s. Gluing ALL tanks to the boss in melee (attack = build threat + reach melee via the class strategy) makes the two highest-HP / highest-threat bodies the only eligible targets, so the strike never lands on a squishy. Main tank holds #1 threat; assist tank(s) sit in melee as the secondary soak. No phases, no adds, no ground AoE. Frenzy (<=5% HP) and Berserk (6 min) are wipe-timers, not reactable - no rule for them. (Boss notes: Naxxramas/BossNotes/Patchwerk.md)",
+      "_comment": "Hateful Strike soak: glue all tanks to the boss in melee so the two highest-HP bodies are the only eligible strike targets (never a squishy). No phases/adds/AoE; Frenzy + Berserk are unreactable wipe-timers. See BossNotes/Patchwerk.md.",
       "trigger": { "shape": "encounter_active", "role": "tank" },
       "actions": [
         { "shape": "attack", "params": { "targets": "patchwerk" }, "priority": 1 }
       ]
     },
     {
-      "_comment": "Everyone else focuses the boss. Melee DPS close in; ranged DPS attack from their normal cast range via the class strategy, which keeps them naturally outside the 5y Hateful Strike radius (the critical ranged constraint). Healers get no rule - they run their class heal strategy untouched. DROPPED from the commented-out C++: 'rear flank' (melee-behind) and a 12-15y 'ranged position' hold. There is no Level-2 shape for 'hold distance from boss', and 'rear flank' moves a bot to half-melee-range gated on ANGLE only (RearFlankAction), so wiring it to any group containing ranged would yank casters INTO the 5y kill zone. Neither is mechanically needed on Patchwerk (no cleave, no parry-haste concern), so both are intentionally omitted.",
+      "_comment": "Everyone else focuses the boss; ranged DPS stay at cast range, naturally outside the 5y Hateful Strike radius. Healers run their own heal strategy untouched. (C++ 'rear flank' + ranged-hold intentionally dropped: no Level-2 distance-hold, and 'rear flank' would pull casters into the 5y zone.)",
       "trigger": { "shape": "encounter_active", "role": "dps" },
       "actions": [
         { "shape": "attack", "params": { "targets": "patchwerk" }, "priority": 1 }

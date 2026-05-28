@@ -3,7 +3,7 @@
   "boss": "maexxna",
   "rules": [
     {
-      "_comment": "Non-tanks fight from the rear flank and dodge ground AoE. (Replaces the C++ MaexxnaTrigger's non-tank gate with role:nontank.)",
+      "_comment": "Non-tanks fight from the rear flank and dodge ground AoE.",
       "trigger": { "shape": "encounter_active", "role": "nontank", "boss": "maexxna" },
       "actions": [
         { "name": "rear flank", "priority": 1 },
@@ -11,14 +11,14 @@
       ]
     },
     {
-      "_comment": "DPS swap onto the off-threat Web Wrap cocoon (entry 16486 / name 'web wrap') the instant one spawns to free the wrapped player, then fall back to the boss. attack with detect:nearest scans nearby NPCs by name/entry because the default threat detection can't see an off-threat cocoon. +2 beats default attacker selection so the bot leaves the boss.",
+      "_comment": "DPS swap onto the off-threat Web Wrap cocoon (16486) on spawn to free the wrapped player, then back to the boss. detect:nearest because threat detection can't see an off-threat cocoon.",
       "trigger": { "shape": "encounter_active", "role": "dps", "boss": "maexxna" },
       "actions": [
         { "shape": "attack", "params": { "targets": 16486, "detect": "nearest", "boss": "maexxna" }, "priority": 2 }
       ]
     },
     {
-      "_comment": "Sub-30% Frenzy Web Spray (29484, raid-wide stun every 40s, first at 40s): pre-cast tank externals/defensives in the 4s window before it so they carry through the stun (healers are stunned too, so reactive healing can't). pre_cast_window predicts the 40s cadence and re-anchors on the observed stun aura. Each cast self-gates to its class, so only the right bot acts; require_aura:frenzy keeps it to the lethal frenzied sprays.",
+      "_comment": "Sub-30% Frenzy Web Spray (29484, raid-wide stun every 40s): pre-cast tank externals/defensives in the 4s window before it so they carry through the stun (healers are stunned too). Each cast self-gates to its class; require_aura:frenzy limits it to the lethal sprays.",
       "trigger": { "shape": "pre_cast_window", "boss": "maexxna", "spell": 29484, "interval": 40000, "first_at": 40000, "lead": 4000, "tail": 6000, "require_aura": "frenzy", "role": "maintank,healer" },
       "actions": [
         { "name": "hand of sacrifice on main tank", "priority": 5 },
