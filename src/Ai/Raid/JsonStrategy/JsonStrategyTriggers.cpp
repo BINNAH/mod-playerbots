@@ -287,6 +287,9 @@ bool JsonAddsNearTrigger::IsActive()
     std::string add = JsonKv(qualifier, "add");
     if (add.empty())
         return false;
+    // add may be a comma-joined union of names/entries (the loader encodes an
+    // array this way) -- a unit matching ANY token counts toward 'count'.
+    std::vector<std::string> addTokens = JsonSplit(add, ',');
 
     if (!RoleMatches(botAI, bot, JsonKv(qualifier, "role")))
         return false;
@@ -315,7 +318,16 @@ bool JsonAddsNearTrigger::IsActive()
     for (ObjectGuid const& guid : npcs)
     {
         Unit* unit = botAI->GetUnit(guid);
-        if (!unit || !unit->IsAlive() || !MatchesNameOrEntry(botAI, unit, add))
+        if (!unit || !unit->IsAlive())
+            continue;
+        bool matchesAdd = false;
+        for (std::string const& tok : addTokens)
+            if (MatchesNameOrEntry(botAI, unit, tok))
+            {
+                matchesAdd = true;
+                break;
+            }
+        if (!matchesAdd)
             continue;
         if (range > 0.0f && ref->GetExactDist2d(unit) > range)
             continue;
@@ -323,6 +335,37 @@ bool JsonAddsNearTrigger::IsActive()
             return true;
     }
     return false;
+}
+
+// ---------------------------------------------------------------------------
+// is_alive
+// ---------------------------------------------------------------------------
+bool JsonIsAliveTrigger::IsActive()
+{
+    std::string targets = JsonKv(qualifier, "targets");
+    if (targets.empty())
+        return false;
+
+    if (!RoleMatches(botAI, bot, JsonKv(qualifier, "role")))
+        return false;
+
+    bool present = JsonKv(qualifier, "present", "1") != "0";
+    bool matchAll = JsonKv(qualifier, "match", "any") == "all";
+
+    // Threat-based: "find target" walks GetThreatenedByMeList() matched by name --
+    // no LOS, no range cap, so this gate never flickers for a far / LOS-blocked
+    // bot the way the proximity adds_near does.
+    std::vector<std::string> tokens = JsonSplit(targets, ',');
+    uint32 aliveCount = 0;
+    for (std::string const& tok : tokens)
+    {
+        Unit* u = AI_VALUE2(Unit*, "find target", tok);
+        if (u && u->IsAlive())
+            ++aliveCount;
+    }
+
+    bool aliveCond = matchAll ? (aliveCount == tokens.size()) : (aliveCount >= 1);
+    return present ? aliveCond : !aliveCond;
 }
 
 // ---------------------------------------------------------------------------

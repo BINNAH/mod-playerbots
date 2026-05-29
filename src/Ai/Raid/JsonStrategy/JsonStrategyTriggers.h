@@ -40,7 +40,8 @@ public:
 };
 
 // Shape "adds_near": fires while at least `count` living creatures matching `add`
-// (name or entry id) are within `range` yards of the bot (of=self, the default)
+// (a name, an entry id, or an ARRAY of either -- an array is a union, a unit
+// matching ANY token counts) are within `range` yards of the bot (of=self, default)
 // or the boss (of=boss; needs a `boss` name). Detection is a proximity scan
 // ("nearest npcs"), so it is THREAT-INDEPENDENT -- it sees adds/boss this bot has
 // no aggro on, the gate the threat-based encounter_active can't give kiters /
@@ -56,6 +57,25 @@ public:
 
     bool IsActive() override;
     std::string const getName() override { return "json addsnear::" + qualifier; }
+};
+
+// Shape "is_alive": fires on the alive/dead state of named creatures, read from
+// the bot's THREAT LIST ("find target") -- threat-based, so NO LOS and NO range
+// cap; it never flickers for a far / LOS-blocked bot (unlike adds_near, a
+// sight+LOS proximity scan). The flicker-free PHASE GATE: e.g. "either Thaddius
+// add alive" gating the add phase, or its inverse (present=0) to swap to the boss
+// once the adds are down. `present`=1 alive / 0 dead. `match`=any (default, >=1
+// alive) / all. CAVEAT: threat-scoped -- a creature the bot never threatened reads
+// as not-alive (fine for "we're fighting these" gates, NOT a map-wide check), and
+// it matches by NAME, not entry id.
+// Qualifier: "targets=<name csv>|present=<1|0>|match=<any|all>|role=<csv>".
+class JsonIsAliveTrigger : public Trigger, public Qualified
+{
+public:
+    JsonIsAliveTrigger(PlayerbotAI* ai) : Trigger(ai, "json isalive") {}
+
+    bool IsActive() override;
+    std::string const getName() override { return "json isalive::" + qualifier; }
 };
 
 // Shape "target_hp_ahead": fires while the bot's CURRENT TARGET is at/below

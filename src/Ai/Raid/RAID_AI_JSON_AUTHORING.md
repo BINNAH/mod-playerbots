@@ -194,7 +194,7 @@ priority orbit rule whose trigger is `count: 6`, with the hold rule below it).
 
 | Field   | Type        | Default | Meaning                                                            |
 |---------|-------------|---------|--------------------------------------------------------------------|
-| `add`   | string\|int | **req** | Add name or entry id to count.                                     |
+| `add`   | string\|int\|array | **req** | Add name(s)/entry id(s) to count. An **array is a union** — a unit matching ANY token counts (e.g. `["stalagg","feugen"]`). Same encoding as `target_hp_ahead`'s `others`. **Not** a global "is any add alive" gate: this scan is **sight-range (`SightDistance`, 100y) AND LOS-filtered**, so it goes false for a bot that has lost LOS to every match even though one is still alive across the room. A true phase gate that must not flicker for far/LOS-blocked bots needs a **threat-based** Level-1 trigger (e.g. `thaddius phase pet`); see `Naxxramas/BossNotes/Thaddius.md`. |
 | `range` | float       | `0`     | Max distance from the reference point (`0` = anywhere in sight).   |
 | `count` | int         | `1`     | Minimum number within range for the trigger to fire.               |
 | `of`    | string      | `self`  | Reference point for `range`: `self` (the bot) or `boss`.           |
@@ -204,6 +204,34 @@ priority orbit rule whose trigger is `count: 6`, with the hold rule below it).
 
 ```json
 { "shape": "adds_near", "add": "zombie chow", "range": 9.0, "count": 6, "of": "self", "role": "offtank" }
+{ "shape": "adds_near", "add": ["stalagg", "feugen"], "count": 1 }
+```
+
+### Trigger shape `is_alive` (→ `JsonIsAliveTrigger`)
+The flicker-free **phase gate**: fires on the alive/dead state of named creatures
+read from the bot's **threat list** (`find target`). Because it's **threat-based**
+it has **no LOS and no range cap** — it never flickers for a bot standing far away
+or with line of sight broken, which is exactly what `adds_near` (a sight+LOS
+proximity scan) *cannot* guarantee. Use it for "are we still in this phase" gates
+(e.g. "either Thaddius add alive" → run the add-phase rules + suppress) and, with
+`present:false`, the inverse ("adds down → switch to the boss").
+
+| Field     | Type        | Default | Meaning                                                                 |
+|-----------|-------------|---------|-------------------------------------------------------------------------|
+| `targets` | string\|array | **req** | Creature name(s). Matched by **NAME** against the threat list — entry ids are **not** supported here (use a name). |
+| `present` | bool        | `true`  | `true`: fire while the alive condition holds. `false`: fire while it does not (adds dead). |
+| `match`   | string      | `any`   | `any` = ≥1 of `targets` alive; `all` = every one alive.                  |
+| `role`    | string      | (all)   | Optional role filter (same tokens as `encounter_active`).               |
+
+> **CAVEAT — threat-scoped, not map-wide.** `find target` only sees creatures the
+> bot **threatens**, so a mob a bot never engaged reads as not-alive. Fine for
+> "we're fighting these adds" gates (everyone damaging/healing builds threat); it
+> is **not** a global "alive anywhere on the map" check. If a future fight needs
+> that, add a `detect:"map"` mode (a map-wide lookup) — not built yet.
+
+```json
+{ "shape": "is_alive", "targets": ["stalagg", "feugen"] }
+{ "shape": "is_alive", "targets": ["stalagg", "feugen"], "present": false }
 ```
 
 ### Trigger shape `target_hp_ahead` (→ `JsonTargetHpAheadTrigger`)

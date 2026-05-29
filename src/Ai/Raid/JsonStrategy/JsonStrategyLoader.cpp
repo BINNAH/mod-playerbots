@@ -192,10 +192,25 @@ static bool ResolveTrigger(json const& t, std::string const& fileBoss,
     }
     if (shape == "adds_near")
     {
+        // add: a creature name, an entry id, or an array mixing both. An array is
+        // joined with commas here; the trigger counts a unit matching ANY token
+        // (the union -- e.g. ["stalagg","feugen"] = "either Thaddius add alive").
         std::string add;
+        auto appendAdd = [&add](json const& el)
+        {
+            if (!add.empty())
+                add += ",";
+            add += el.is_number_integer() ? std::to_string(el.get<int>())
+                                          : el.get<std::string>();
+        };
         if (t.contains("add"))
-            add = t["add"].is_number_integer() ? std::to_string(t["add"].get<int>())
-                                               : t["add"].get<std::string>();
+        {
+            if (t["add"].is_array())
+                for (auto const& el : t["add"])
+                    appendAdd(el);
+            else
+                appendAdd(t["add"]);
+        }
         if (add.empty())
         {
             errors.push_back(fname + ": adds_near needs an 'add' (name or entry id)");
@@ -301,6 +316,48 @@ static bool ResolveTrigger(json const& t, std::string const& fileBoss,
         if (!split.empty())
             q += (q.empty() ? "" : "|") + std::string("split=") + split;
         out = "json engage::" + q;
+        return true;
+    }
+    if (shape == "is_alive")
+    {
+        // targets: creature name(s), matched by NAME against the bot's threat list
+        // ("find target", threat-based -- no LOS, no range, never flickers). An
+        // array is joined with commas. This is the flicker-free phase gate that
+        // adds_near (sight+LOS proximity) is NOT. Entry ids aren't supported (find
+        // target matches names) -- use a name.
+        std::string targets;
+        auto appendTarget = [&targets](json const& el)
+        {
+            if (!targets.empty())
+                targets += ",";
+            targets += el.is_number_integer() ? std::to_string(el.get<int>())
+                                              : el.get<std::string>();
+        };
+        if (t.contains("targets"))
+        {
+            if (t["targets"].is_array())
+                for (auto const& el : t["targets"])
+                    appendTarget(el);
+            else
+                appendTarget(t["targets"]);
+        }
+        if (targets.empty())
+        {
+            errors.push_back(fname + ": is_alive needs 'targets' (name or array of names)");
+            return false;
+        }
+        bool present = t.value("present", true);
+        std::string match = t.value("match", std::string("any"));
+        if (match != "any" && match != "all")
+        {
+            errors.push_back(fname + ": is_alive 'match' must be 'any' or 'all'");
+            return false;
+        }
+        std::string q = "targets=" + targets + "|present=" + (present ? "1" : "0") + "|match=" + match;
+        std::string role = t.value("role", std::string());
+        if (!role.empty())
+            q += "|role=" + role;
+        out = "json isalive::" + q;
         return true;
     }
 

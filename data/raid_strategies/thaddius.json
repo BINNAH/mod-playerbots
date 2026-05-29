@@ -1,7 +1,7 @@
 {
   "name": "thaddius",
   "boss": "thaddius",
-  "_comment": "Solo-raid Thaddius. `.rjson pull` sends each bot climbing to its assigned add via move_to_target (the only shape that paths UP the ramp -- a normal MoveTo snaps Z into the slime below). Roles split LEFT/Stalagg vs RIGHT/Feugen; healers split 1/2 via the `split` field so neither tank goes unhealed. C++ owns on-platform positioning, Magnetic Pull swaps, and the z-drop transition; polarity is stack_point by charge; twin-add death-sync is target_hp_ahead + @damage. See BossNotes/Thaddius.md and RAID_AI_JSON_AUTHORING.md (move_to_target) for the full rationale.",
+  "_comment": "Solo-raid Thaddius. `.rjson pull` sends each bot climbing to its assigned add via move_to_target (the only shape that paths UP the ramp -- a normal MoveTo snaps Z into the slime below). Roles split LEFT/Stalagg vs RIGHT/Feugen; healers split 1/2 via the `split` field so neither tank goes unhealed. add targeting + Magnetic Pull swaps are the attack shape (detect+select:nearest, sticky:false); polarity is stack_point by charge; twin-add death-sync is target_hp_ahead + @damage. the add-phase gate is the is_alive shape (either add alive, threat-based/no-LOS); C++ owns only the z-drop transition. See BossNotes/Thaddius.md and RAID_AI_JSON_AUTHORING.md (move_to_target) for the full rationale.",
   "rules": [
     {
       "_comment": "Pull: main tank climbs toward the live Stalagg (left platform). No attack -- C++ engages on arrival. `then` re-climbs to whichever add it lands on after a Magnetic Pull swap. boss:\"\" so the rule goes inert when the add dies.",
@@ -128,26 +128,28 @@
       ]
     },
     {
-      "_comment": "Add phase (Level-1): C++ splits bots by nearest add, holds tank/ranged anchors, handles Magnetic Pull swaps.",
+      "_comment": "Add phase: attack the nearest living add. detect+select:nearest with sticky:false rides Magnetic Pull -- a tank flung to the other add retargets to it instead of running back. Replaces the C++ targeting + on-platform anchors. boss:\"\" so it yields when both adds die.",
       "trigger": {
-        "name": "thaddius phase pet"
+        "shape": "is_alive",
+        "targets": [
+          "stalagg",
+          "feugen"
+        ]
       },
       "actions": [
         {
-          "name": "thaddius attack nearest pet",
+          "shape": "attack",
+          "params": {
+            "targets": [
+              "stalagg",
+              "feugen"
+            ],
+            "detect": "nearest",
+            "select": "nearest",
+            "sticky": false,
+            "boss": ""
+          },
           "priority": 1
-        }
-      ]
-    },
-    {
-      "_comment": "Add phase: taunt when a tank loses its add to Magnetic Pull.",
-      "trigger": {
-        "name": "thaddius phase pet lose aggro"
-      },
-      "actions": [
-        {
-          "name": "taunt spell",
-          "priority": 2
         }
       ]
     },
@@ -261,9 +263,13 @@
       ]
     },
     {
-      "_comment": "Add phase: no formation / follow / generic assist while the C++ pet action owns positioning + targeting.",
+      "_comment": "Add phase (is_alive: either add alive, threat-based/no-LOS): no formation / follow / generic assist while the attack shape owns targeting.",
       "trigger": {
-        "name": "thaddius phase pet"
+        "shape": "is_alive",
+        "targets": [
+          "stalagg",
+          "feugen"
+        ]
       },
       "actions": [
         "combat formation move",
@@ -275,7 +281,11 @@
     {
       "_comment": "Add phase (after 5s): suppress all class taunts. Magnetic Pull transfers threat in the boss script, so re-taunts aren't needed and paladin taunts (Hand of Reckoning, Righteous Defense) steal across platforms. The 5s grace lets the opening pickup fire. Name the class actions, not just 'taunt spell' (which paladins/DKs alias).",
       "trigger": {
-        "name": "thaddius phase pet"
+        "shape": "is_alive",
+        "targets": [
+          "stalagg",
+          "feugen"
+        ]
       },
       "after_ms": 5000,
       "actions": [
@@ -288,9 +298,10 @@
       ]
     },
     {
-      "_comment": "Thaddius phase: suppress every non-rotation movement so nothing shoves bots off the polarity stack once stack_point parks and yields. 'dps assist' is left on so bots still DPS the boss between Polarity Shifts; auto-attacks are unaffected.",
+      "_comment": "Thaddius phase (boss attackable): suppress every non-rotation movement so nothing shoves bots off the polarity stack once stack_point parks and yields. 'dps assist' left on so bots still DPS between Polarity Shifts; auto-attacks unaffected. encounter_active gates the whole boss phase (he's non-attackable until then).",
       "trigger": {
-        "name": "thaddius phase thaddius"
+        "shape": "encounter_active",
+        "boss": "thaddius"
       },
       "actions": [
         "combat formation move",

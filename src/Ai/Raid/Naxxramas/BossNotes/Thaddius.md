@@ -352,3 +352,22 @@ Magnetic Pull swaps, the transition jump, polarity). Existing C++ AI does:
   Thaddius platform is at z=304. `ThaddiusMoveToPlatformAction` handles the jump
   navigation. No JSON movement shape can express vertical z-transitions or `JumpTo`
   calls — this remains C++ only.
+
+- **Rejected (2026-05-28): replacing the `thaddius phase pet` add-phase gate with a
+  data shape.** The combat *action* was successfully moved to the `attack` shape
+  (`targets:[stalagg,feugen]`, `detect+select:nearest`, `sticky:false` — rides
+  Magnetic Pull, validated in-game phase 1 no deaths) and the *anchors* dropped
+  (generic positioning held). But converting the *trigger* (combat rule + the two
+  pet-phase `suppress` entries) from `thaddius phase pet` to
+  `adds_near {add:["stalagg","feugen"]}` **broke ranged DPS and healers** — they
+  drifted off the platforms. Cause: `adds_near` scans `nearest npcs`, which is
+  **sight-range (`SightDistance`=100y) AND LOS-filtered** (`ignoreLos=false`), while
+  `IsPhasePet` reads `find target` (**threat-based** — no LOS, no range). A far
+  ranged/healer that loses LOS to *both* adds (platform lip / central structure /
+  bodies) flips the gate false → the `follow` + `combat formation move` suppress
+  lifts → generic AI drags it to the master/formation, off the platform. So
+  `thaddius phase pet` (threat-based, never flickers in combat) stays Level-1 — a
+  proximity gate cannot express "either add alive *anywhere*". The `adds_near` array
+  (union) support added for this still exists and is fine for genuinely *proximity*
+  gates; it is just the wrong tool for a flicker-free phase gate. (A data fix would
+  need a threat-based or map-wide `adds_alive` trigger; not built.)

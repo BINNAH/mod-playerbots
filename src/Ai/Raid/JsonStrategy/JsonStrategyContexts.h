@@ -67,6 +67,7 @@ public:
         creators["json encounter"] = &JsonStrategyTriggerContext::json_encounter;
         creators["json precast"] = &JsonStrategyTriggerContext::json_precast;
         creators["json addsnear"] = &JsonStrategyTriggerContext::json_addsnear;
+        creators["json isalive"] = &JsonStrategyTriggerContext::json_isalive;
         creators["json hpahead"] = &JsonStrategyTriggerContext::json_hpahead;
         creators["json engage"] = &JsonStrategyTriggerContext::json_engage;
         creators["json targetvictim"] = &JsonStrategyTriggerContext::json_targetvictim;
@@ -77,6 +78,7 @@ private:
     static Trigger* json_encounter(PlayerbotAI* ai) { return new JsonEncounterActiveTrigger(ai); }
     static Trigger* json_precast(PlayerbotAI* ai) { return new JsonPreCastWindowTrigger(ai); }
     static Trigger* json_addsnear(PlayerbotAI* ai) { return new JsonAddsNearTrigger(ai); }
+    static Trigger* json_isalive(PlayerbotAI* ai) { return new JsonIsAliveTrigger(ai); }
     static Trigger* json_hpahead(PlayerbotAI* ai) { return new JsonTargetHpAheadTrigger(ai); }
     static Trigger* json_engage(PlayerbotAI* ai) { return new JsonManualEngageTrigger(ai); }
     static Trigger* json_targetvictim(PlayerbotAI* ai) { return new JsonTargetVictimTrigger(ai); }
